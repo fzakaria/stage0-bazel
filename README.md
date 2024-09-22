@@ -15,7 +15,7 @@ This seed is a simple, human-inspectable binary that serves as the foundational 
 I am at _bloodelf_ or [Phase 7](https://github.com/oriansj/stage0-posix-x86/blob/master/mescc-tools-mini-kaem.kaem#L118) if you are following along there.
 
 ```console
-> bazel run //tools/stage3:blood-elf-0 -- --help
+> bazel run //tools/stage0/phase6:blood-elf-0 -- --help
 INFO: Analyzed target //tools/stage3:blood-elf-0 (0 packages loaded, 0 targets configured).
 INFO: Found 1 target...
 Target //tools/stage3:blood-elf-0 up-to-date:
