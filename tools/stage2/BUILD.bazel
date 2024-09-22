@@ -1,0 +1,90 @@
+load("//tools/stage1:cat.bzl", "cat_files")
+load("//tools/stage1:hex2.bzl", "hex2_multi_binary")
+load("//tools/stage1:M0.bzl", "M0_expand")
+load(":cc.bzl", "cc_binary")
+
+package(
+    default_visibility = ["//visibility:public"],
+)
+
+# Phase 5
+hex2_multi_binary(
+    name = "M2",
+    srcs = select(
+        {
+            "@bazel_tools//src/conditions:linux_x86_64": [
+                # do not sort
+                "@stage0-x86//:ELF-i386.hex2",
+            ],
+        },
+    ) + [
+        ":M2-0.hex2",
+    ],
+     # We need to use the hex2-0 variant first
+    assembler = "//tools/stage1:hex2-0",
+)
+M0_expand(
+    name = "M2-0.hex2",
+    src = ":M2-0-0.M1",
+)
+
+cat_files(
+    name = "M2-0-0.M1",
+    srcs = select(
+        {
+            "@bazel_tools//src/conditions:linux_x86_64": [
+                # do not sort
+                "@stage0-x86//:x86_defs.M1",
+                "@stage0-x86//:libc-core.M1",
+            ],
+        }) + [
+            ":M2-0",
+        ],
+)
+
+cc_binary(
+    name = "M2-0",
+    srcs = select(
+        {
+            "@bazel_tools//src/conditions:linux_x86_64": [
+                "@M2libc//:x86/linux/bootstrap.c",
+            ],
+        },
+    ) + [
+        # do not sort
+        "@M2-Planet//:cc.h",
+        "@M2libc//:bootstrappable.c",
+        "@M2-Planet//:cc_globals.c",
+        "@M2-Planet//:cc_reader.c",
+        "@M2-Planet//:cc_strings.c",
+        "@M2-Planet//:cc_types.c",
+        "@M2-Planet//:cc_core.c",
+        "@M2-Planet//:cc_macro.c",
+        "@M2-Planet//:cc.c",
+    ],
+)
+
+# Phase 4
+hex2_multi_binary(
+    name = "cc_x86",
+    srcs = select(
+        {
+            "@bazel_tools//src/conditions:linux_x86_64": [
+                # do not sort
+                "@stage0-x86//:ELF-i386.hex2",
+                ":cc_x86-0.hex2",
+            ],
+        },
+    ),
+    # We need to use the hex2-0 variant first
+    assembler = "//tools/stage1:hex2-0",
+)
+
+M0_expand(
+    name = "cc_x86-0.hex2",
+    src = select(
+        {
+            "@bazel_tools//src/conditions:linux_x86_64": "@stage0-x86//:cc_x86.M1",
+        },
+    ),
+)

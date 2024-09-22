@@ -1,0 +1,10 @@
+exports_files([
+    "hex1_x86.hex0",
+    "hex2_x86.hex1",
+    "catm_x86.hex2",
+    "ELF-i386.hex2",
+    "M0_x86.hex2",
+    "cc_x86.M1",
+    "x86_defs.M1",
+    'libc-core.M1'
+])

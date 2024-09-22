@@ -1,0 +1,72 @@
+load("@bazel_skylib//rules:diff_test.bzl", "diff_test")
+load("//tools/stage0:hex0.bzl", "hex0_binary")
+load(":cat.bzl", "cat_files")
+load(":hex1.bzl", "hex1_binary")
+load(":hex2.bzl", "hex2_binary", "hex2_multi_binary")
+
+package(
+    default_visibility = ["//visibility:public"],
+)
+
+# Phase 3
+hex2_multi_binary(
+    name = "M0",
+    srcs = select(
+        {
+            "@bazel_tools//src/conditions:linux_x86_64": [
+                # do not sort
+                "@stage0-x86//:ELF-i386.hex2",
+                "@stage0-x86//:M0_x86.hex2",
+            ],
+        },
+    ),
+    # We need to use the hex2-0 variant first
+    assembler = ":hex2-0",
+)
+
+# Phase 2-b
+hex2_binary(
+    name = "catm",
+    src = select(
+        {
+            "@bazel_tools//src/conditions:linux_x86_64": "@stage0-x86//:catm_x86.hex2",
+        },
+    ),
+    # We need to use the hex2-0 variant first
+    assembler = ":hex2-0",
+)
+
+# Phase 2
+hex1_binary(
+    name = "hex2-0",
+    src = select(
+        {
+            "@bazel_tools//src/conditions:linux_x86_64": "@stage0-x86//:hex2_x86.hex1",
+        },
+    ),
+)
+
+# Phase 1
+hex0_binary(
+    name = "hex1",
+    src = select(
+        {
+            "@bazel_tools//src/conditions:linux_x86_64": "@stage0-x86//:hex1_x86.hex0",
+        },
+    ),
+)
+
+cat_files(
+    name = "catm-test-actual",
+    srcs = [
+        # do not sort
+        ":tests/hello",
+        ":tests/world",
+    ],
+)
+
+diff_test(
+    name = "catm-diff-test",
+    file1 = ":catm-test-actual",
+    file2 = ":tests/expected",
+)

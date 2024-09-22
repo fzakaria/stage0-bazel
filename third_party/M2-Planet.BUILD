@@ -1,0 +1,10 @@
+exports_files([
+    "cc.h",
+    "cc_globals.c",
+    "cc_reader.c",
+    "cc_strings.c",
+    "cc_types.c",
+    "cc_core.c",
+    "cc_macro.c",
+    "cc.c",
+])

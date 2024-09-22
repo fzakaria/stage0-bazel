@@ -1,0 +1,43 @@
+load("@bazel_skylib//rules:diff_test.bzl", "diff_test")
+load(":hex0.bzl", "hex0_binary")
+load(":toolchain.bzl", "hex0_toolchain")
+
+# This is our toolchain type for the hex0 toolchain.
+toolchain_type(
+    name = "toolchain_type",
+    visibility = ["//visibility:public"],
+)
+
+toolchain(
+    name = "hex0_linux_x86_toolchain",
+    exec_compatible_with = [
+        "@platforms//os:linux",
+        "@platforms//cpu:x86_64",
+    ],
+    target_compatible_with = [
+        "@platforms//os:linux",
+        "@platforms//cpu:x86_64",
+    ],
+    toolchain = ":hex0_linux_x86",
+    toolchain_type = ":toolchain_type",
+)
+
+hex0_toolchain(
+    name = "hex0_linux_x86",
+    assembler = "@hex0-seeds//:POSIX/x86/hex0-seed",
+)
+
+hex0_binary(
+    name = "hex0",
+    src = select({
+            "@bazel_tools//src/conditions:linux_x86_64": "@hex0-seeds//:POSIX/x86/hex0_x86.hex0",
+        },),
+)
+
+diff_test(
+    name = "hex0-diff",
+    failure_message = "The hex0 binary does not match the seed.",
+    file1 = ":hex0",
+    file2 = "@hex0-seeds//:POSIX/x86/hex0-seed",
+    size="small",
+)
