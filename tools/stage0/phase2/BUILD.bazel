@@ -1,0 +1,44 @@
+"""Phase 2 for Stage0: Build hex2 from hex1 & catm binary.
+"""
+
+load("//tools/stage0:hex1.bzl", "hex1_binary")
+load("//tools/stage0:hex2.bzl", "hex2_simple_binary")
+load("@bazel_skylib//rules:diff_test.bzl", "diff_test")
+load("//tools/stage0:catm.bzl", "cat_files")
+
+package(
+    default_visibility = ["//visibility:public"],
+)
+
+hex1_binary(
+    name = "hex2-0",
+    src = select(
+        {
+            "@bazel_tools//src/conditions:linux_x86_64": "@stage0-x86//:hex2_x86.hex1",
+        },
+    ),
+)
+
+hex2_simple_binary(
+    name = "catm",
+    src = select(
+        {
+            "@bazel_tools//src/conditions:linux_x86_64": "@stage0-x86//:catm_x86.hex2",
+        },
+    ),
+)
+
+cat_files(
+    name = "catm-test-actual",
+    srcs = [
+        # do not sort
+        ":tests/hello",
+        ":tests/world",
+    ],
+)
+
+diff_test(
+    name = "catm-diff-test",
+    file1 = ":catm-test-actual",
+    file2 = ":tests/expected",
+)

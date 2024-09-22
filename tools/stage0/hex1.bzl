@@ -1,17 +1,37 @@
-def _hex1_binary_impl(ctx):
-    out = ctx.actions.declare_file("%s.bin" % ctx.label.name)
+"""Rules for building hex1 programs.
+"""
+
+def hex1_assemble(ctx, src, assembler, out):
+    """
+    Compile a hex0 program.
+
+    Args:
+        ctx: The context.
+        src: The source file.
+        assembler: The assembler to use.
+        out: The output file.
+    """
     args = ctx.actions.args()
-    args.add(ctx.file.src)
+    args.add(src)
     args.add(out)
 
     ctx.actions.run(
         outputs = [out],
-        inputs = [ctx.file.src],
-        executable = ctx.executable._assembler,
+        inputs = [src],
+        executable = assembler,
         arguments = [args],
         mnemonic = "Hex1Assemble",
     )
 
+def _hex1_binary_impl(ctx):
+    src = ctx.file.src
+    out = ctx.actions.declare_file("%s.bin" % ctx.label.name)
+    hex1_assemble(
+        ctx,
+        src = src,
+        assembler = ctx.executable._assembler,
+        out = out,
+    )
     return [DefaultInfo(
         files = depset([out]),
         executable = out,
@@ -25,12 +45,11 @@ hex1_binary = rule(
             mandatory = True,
             doc = "Source file (hex1) to compile.",
         ),
-        # FIXME: Should this all be toolchain?
         "_assembler": attr.label(
             executable = True,
             cfg = "exec",
             doc = "hex1 assembler to use.",
-            default = "@//tools/stage1:hex1",
+            default = "@//tools/stage0/phase1:hex1",
         ),
     },
     doc = """Compiles a hex1 program.""",

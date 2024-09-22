@@ -1,0 +1,22 @@
+"""Phase 1 for Stage0: Build hex1 from hex0
+"""
+
+load("//tools/stage0:hex0.bzl", "hex0_binary")
+
+package(
+    default_visibility = ["//visibility:public"],
+)
+
+hex0_binary(
+    name = "hex1",
+    src = select(
+        {
+            "@bazel_tools//src/conditions:linux_x86_64": "@stage0-x86//:hex1_x86.hex0",
+        },
+    ),
+    assembler = select(
+        {
+            "@bazel_tools//src/conditions:linux_x86_64": "@hex0-seeds//:POSIX/x86/hex0-seed",
+        },
+    ),
+)

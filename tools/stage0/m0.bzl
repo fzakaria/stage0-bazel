@@ -1,4 +1,7 @@
-def _M0_expand_impl(ctx):
+"""Rules for expanding M0 files.
+"""
+
+def _m0_expand_impl(ctx):
     out = ctx.actions.declare_file("%s" % ctx.label.name)
     args = ctx.actions.args()
     args.add(ctx.file.src)
@@ -17,20 +20,20 @@ def _M0_expand_impl(ctx):
         executable = out,
     )]
 
-M0_expand = rule(
-    implementation = _M0_expand_impl,
+m0_expand = rule(
+    implementation = _m0_expand_impl,
     attrs = {
         "src": attr.label(
-            allow_single_file = [".M1", ".M0"],
+            allow_single_file = [".M1"],
             mandatory = True,
-            doc = "Sources to expand macros.",
+            doc = "Source to expand macros.",
         ),
         "_tool": attr.label(
             executable = True,
             cfg = "exec",
             doc = "The M0 tool.",
-            default = "@//tools/stage1:M0",
+            default = "@//tools/stage0/phase3:M0",
         ),
     },
-    doc = """Concatenate (cat) a series of files.""",
+    doc = """Expand a M1 file to hex2.""",
 )

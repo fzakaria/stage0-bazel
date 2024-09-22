@@ -54,6 +54,4 @@ http_archive(
 )
 
 register_toolchains(
-    "//tools/stage0:hex0_linux_x86_toolchain",
-    "//tools/stage3:M2_linux_x86_toolchain",
 )

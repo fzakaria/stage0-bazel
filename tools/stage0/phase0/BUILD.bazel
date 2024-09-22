@@ -1,0 +1,31 @@
+"""Phase 0 for Stage0: Build hex0 from hex0
+
+This serves to only validate that our seed is correct.
+"""
+
+load("@bazel_skylib//rules:diff_test.bzl", "diff_test")
+load("//tools/stage0:hex0.bzl", "hex0_binary")
+
+hex0_binary(
+    name = "hex0",
+    src = select({
+            "@bazel_tools//src/conditions:linux_x86_64": "@hex0-seeds//:POSIX/x86/hex0_x86.hex0",
+        },),
+    assembler = select(
+        {
+            "@bazel_tools//src/conditions:linux_x86_64": "@hex0-seeds//:POSIX/x86/hex0-seed",
+        },
+    ),
+)
+
+diff_test(
+    name = "hex0-diff",
+    failure_message = "The hex0 binary does not match the seed.",
+    file1 = ":hex0",
+    file2 = select(
+        {
+            "@bazel_tools//src/conditions:linux_x86_64": "@hex0-seeds//:POSIX/x86/hex0-seed",
+        },
+    ),
+    size="small",
+)

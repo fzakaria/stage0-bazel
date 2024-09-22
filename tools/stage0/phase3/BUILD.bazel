@@ -1,0 +1,23 @@
+"""Phase 3 for Stage0: Build M0 from hex2 
+"""
+
+load("//tools/stage0:hex2.bzl", "hex2_binary")
+
+package(
+    default_visibility = ["//visibility:public"],
+)
+
+# M0 is the architecture specific version of M1 and is by design single
+# architecture only and will be replaced by the C code version of M1
+hex2_binary(
+    name = "M0",
+    srcs = select(
+        {
+            "@bazel_tools//src/conditions:linux_x86_64": [
+                # do not sort
+                "@stage0-x86//:ELF-i386.hex2",
+                "@stage0-x86//:M0_x86.hex2",
+            ],
+        },
+    ),
+)

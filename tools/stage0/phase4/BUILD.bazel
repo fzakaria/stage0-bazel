@@ -1,0 +1,31 @@
+"""Phase 4 for Stage0: Build cc_x86 from M0 
+"""
+
+load("//tools/stage0:hex2.bzl", "hex2_binary")
+load("//tools/stage0:m0.bzl", "m0_expand")
+
+package(
+    default_visibility = ["//visibility:public"],
+)
+
+hex2_binary(
+    name = "cc_arch",
+    srcs = select(
+        {
+            "@bazel_tools//src/conditions:linux_x86_64": [
+                # do not sort
+                "@stage0-x86//:ELF-i386.hex2",
+                ":cc_arch-0.hex2",
+            ],
+        },
+    ),
+)
+
+m0_expand(
+    name = "cc_arch-0.hex2",
+    src = select(
+        {
+            "@bazel_tools//src/conditions:linux_x86_64": "@stage0-x86//:cc_x86.M1",
+        },
+    ),
+)
