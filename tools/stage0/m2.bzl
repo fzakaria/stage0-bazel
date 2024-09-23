@@ -7,7 +7,8 @@ def _m2_compile_impl(ctx):
     args = ctx.actions.args()
     args.add("--architecture", ctx.attr.architecture)
     args.add_all(ctx.files.srcs, before_each = "-f")
-    args.add("--bootstrap-mode")
+    if (ctx.attr.is_bootstrap):
+        args.add("--bootstrap-mode")
     if (ctx.attr.is_debug):
         args.add("--debug")
     args.add("-o", out)
@@ -29,13 +30,17 @@ m2_compile = rule(
     implementation = _m2_compile_impl,
     attrs = {
         "srcs": attr.label_list(
-            allow_files = [".c"],
+            allow_files = [".c", ".h"],
             mandatory = True,
             doc = "Source files (C) to compile.",
         ),
         "architecture": attr.string(
             mandatory = True,
             doc = "Architecture to compile for.",
+        ),
+        "is_bootstrap": attr.bool(
+            default = False,
+            doc = "Whether to compile in bootstrap mode.",
         ),
         "is_debug": attr.bool(
             default = False,

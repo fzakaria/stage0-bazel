@@ -1,0 +1,95 @@
+"""Phase 9 for Stage0: Build M1 from C sources 
+
+This is the last stage where we will be using the handwritten hex2 and instead
+be using the far more powerful, cross-platform version with a bunch more goodies.
+"""
+
+load("//tools/stage0:hex2_1.bzl", "hex2_binary")
+load("//tools/stage0:m1.bzl", "m1_expand")
+load("//tools/stage0:m2.bzl", "m2_compile")
+
+package(
+    default_visibility = ["//visibility:public"],
+)
+
+m2_compile(
+    name = "M1-macro-1.M1",
+    srcs = [ 
+        # do not sort
+        "@M2libc//:sys/types.h",
+        "@M2libc//:stddef.h",
+    ] + 
+    select(
+        {
+            "@bazel_tools//src/conditions:linux_x86_64": [
+                # do not sort
+                "@M2libc//:x86/linux/fcntl.c",
+            ],
+        },
+    ) + [
+        "@M2libc//:fcntl.c",
+        "@M2libc//:sys/utsname.h",
+    ] + select(
+        {
+            "@bazel_tools//src/conditions:linux_x86_64": [
+                # do not sort
+                "@M2libc//:x86/linux/unistd.c",
+            ],
+        },
+    ) + [
+        # do not sort
+        "@M2libc//:string.c",
+        "@M2libc//:stdlib.c",
+        "@M2libc//:stdio.h",
+        "@M2libc//:stdio.c",
+        "@M2libc//:bootstrappable.c",
+        "@mescc-tools//:stringify.c",
+        "@mescc-tools//:M1-macro.c",
+    ],
+    architecture = select({
+        "@bazel_tools//src/conditions:linux_x86_64": "x86",
+    }),
+)
+
+m1_expand(
+    name = "M1-macro-1.hex2",
+    srcs = select(
+        {
+            "@bazel_tools//src/conditions:linux_x86_64": [
+                # do not sort
+                "@M2libc//:x86/x86_defs.M1",
+                "@M2libc//:x86/libc-full.M1",
+            ],
+        },
+    ) + [
+        ":M1-macro-1.M1",
+    ],
+    architecture = select({
+        "@bazel_tools//src/conditions:linux_x86_64": "x86",
+    }),
+    is_little_endian = select({
+        "@bazel_tools//src/conditions:linux_x86_64": True,
+    }),
+)
+
+hex2_binary(
+    name = "M1",
+    srcs = select(
+        {
+            "@bazel_tools//src/conditions:linux_x86_64": [
+                # do not sort
+                "@M2libc//:x86/ELF-x86.hex2",
+            ],
+        },
+    ) + [
+        ":M1-macro-1.hex2",
+    ],
+    base_address = "0x8048000",
+    architecture = select({
+        "@bazel_tools//src/conditions:linux_x86_64": "x86",
+    }),
+    is_little_endian = select({
+        "@bazel_tools//src/conditions:linux_x86_64": True,
+    }),
+    tool = "//tools/stage0/phase8:hex2-1"
+)

@@ -20,7 +20,7 @@ def hex1_assemble(ctx, src, assembler, out):
         inputs = [src],
         executable = assembler,
         arguments = [args],
-        mnemonic = "Hex1Assemble",
+        mnemonic = "Hex2Assemble",
     )
 
 def _hex1_binary_impl(ctx):

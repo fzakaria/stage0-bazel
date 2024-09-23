@@ -26,20 +26,25 @@ def hex2_assemble(ctx, src, assembler, out):
     )
 
 def _hex2_binary_impl(ctx):
-    srcs = ctx.files.srcs
-    
-    combined_src = ctx.actions.declare_file("%s_combined.hex2" % ctx.label.name)
-    concatenate_files(
-        ctx,
-        srcs = srcs,
-        tool = ctx.executable._catm,
-        out = combined_src,
-    )
+    src = None
+    # skip the concatenate step if there is only one source file
+    if len(ctx.files.srcs) == 1:
+        src = ctx.files.srcs[0]
+    else:
+        srcs = ctx.files.srcs
+        combined_src = ctx.actions.declare_file("%s_combined.hex2" % ctx.label.name)
+        concatenate_files(
+            ctx,
+            srcs = srcs,
+            tool = ctx.executable._catm,
+            out = combined_src,
+        )
+        src = combined_src
 
     out = ctx.actions.declare_file("%s.bin" % ctx.label.name)
     hex2_assemble(
         ctx,
-        src = combined_src,
+        src = src,
         assembler = ctx.executable.assembler,
         out = out,
     )

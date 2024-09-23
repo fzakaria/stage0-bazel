@@ -26,3 +26,5 @@ INFO: Build completed successfully, 1 total action
 INFO: Running command line: bazel-bin/tools/stage3/blood-elf-0.bin --help
 Usage: /home/fmzakari/.cache/bazel/_bazel_fmzakari/560838ef110f58094fd2796f2375f63a/execroot/__main__/bazel-out/k8-fastbuild/bin/tools/stage3/blood-elf-0.bin --file FILENAME1 {--file FILENAME2} --output FILENAME
 ```
+
+A really good description of all the tools can be found [here](https://github.com/fosslinux/live-bootstrap/blob/1f272f90504871ed5b39af4ae2c7c9aed8a56dbb/parts.rst).

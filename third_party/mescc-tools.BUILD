@@ -1,4 +1,9 @@
 exports_files([
     "stringify.c",
     "blood-elf.c",
+    "M1-macro.c",
+    "hex2.c",
+    "hex2.h",
+    "hex2_linker.c",
+    "hex2_word.c",
 ])

@@ -24,10 +24,11 @@ m2_compile(
     architecture = select({
         "@bazel_tools//src/conditions:linux_x86_64": "x86",
     }),
+    is_bootstrap = True,
 )
 
-cat_files(
-    name = "blood-elf-0-0.M1",
+m0_expand(
+    name = "blood-elf-0.hex2",
     srcs = select(
         {
             "@bazel_tools//src/conditions:linux_x86_64": [
@@ -38,11 +39,6 @@ cat_files(
         }) + [
             ":blood-elf-0.M1",
         ],
-)
-
-m0_expand(
-    name = "blood-elf-0.hex2",
-    src = ":blood-elf-0-0.M1",
 )
 
 hex2_binary(

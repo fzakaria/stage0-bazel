@@ -6,5 +6,5 @@ exports_files([
     "M0_x86.hex2",
     "cc_x86.M1",
     "x86_defs.M1",
-    'libc-core.M1'
+    'libc-core.M1',
 ])

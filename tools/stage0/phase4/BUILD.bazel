@@ -23,9 +23,9 @@ hex2_binary(
 
 m0_expand(
     name = "cc_arch-0.hex2",
-    src = select(
+    srcs = select(
         {
-            "@bazel_tools//src/conditions:linux_x86_64": "@stage0-x86//:cc_x86.M1",
+            "@bazel_tools//src/conditions:linux_x86_64": ["@stage0-x86//:cc_x86.M1"],
         },
     ),
 )
