@@ -12,22 +12,23 @@ This seed is a simple, human-inspectable binary that serves as the foundational 
 
 ## How far am I ?
 
-I am at _hex2_ or [Phase 10](https://github.com/oriansj/stage0-posix-x86/blob/master/mescc-tools-mini-kaem.kaem#L205) if you are following along there.
+I am at _mes_ compiler.
 
 ```console
-> bazel run //tools/stage0/phase10:hex2 -- --help
-INFO: Analyzed target //tools/stage0/phase10:hex2 (0 packages loaded, 0 targets configured).
+>  MES_DEBUG=2 bazel run //tools/mes:mes-m2 -- --help
+INFO: Analyzed target //tools/mes:mes-m2 (0 packages loaded, 0 targets configured).
 INFO: Found 1 target...
-Target //tools/stage0/phase10:hex2 up-to-date:
-  bazel-bin/tools/stage0/phase10/hex2
-INFO: Elapsed time: 0.074s, Critical Path: 0.00s
+Target //tools/mes:mes-m2 up-to-date:
+  bazel-bin/tools/mes/mes-m2
+INFO: Elapsed time: 0.054s, Critical Path: 0.00s
 INFO: 1 process: 1 internal.
 INFO: Build completed successfully, 1 total action
-INFO: Running command line: bazel-bin/tools/stage0/phase10/hex2 --help
-Usage: /home/fmzakari/.cache/bazel/_bazel_fmzakari/560838ef110f58094fd2796f2375f63a/execroot/__main__/bazel-out/k8-fa
-stbuild/bin/tools/stage0/phase10/hex2 --file FILENAME1 {-f FILENAME2} (--big-endian|--little-endian) [--base-address 0x12345] [--architecture name]
-Architecture: knight-native, knight-posix, x86, amd64, armv7l, aarch64, riscv32 and riscv64
-To leverage octal or binary input: --octal, --binary
+INFO: Running command line: bazel-bin/tools/mes/mes-m2 --help
+mes: reading boot-0 [${srcdest}mes]: mes/module/mes/boot-0.scm
+mes: reading boot-0 [<boot>]: boot-0.scm
+mes: boot failed: no such file: boot-0.scm
 ```
+
+> GNU Mes is a Scheme interpreter and C compiler for bootstrapping the GNU System. It has helped to decimate the number and size of binary seeds that were used in the bootstrap of GNU Guix 1.0. Recently, version 0.24.2 has realized the first Full Source Bootstrap for Guix. The final goal is to help create a full source bootstrap as part of the bootstrappable builds effort for any UNIX-like operating system.
 
 A really good description of all the tools can be found [here](https://github.com/fosslinux/live-bootstrap/blob/1f272f90504871ed5b39af4ae2c7c9aed8a56dbb/parts.rst).
