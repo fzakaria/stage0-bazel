@@ -1,0 +1,102 @@
+"""Phase 12 for Stage0: Build M2-Mesoplanet from M2-Planet 
+
+"""
+
+load("//tools/stage0:hex2_1.bzl", "hex2_binary")
+load("//tools/stage0:m1.bzl", "m1_expand")
+load("//tools/stage0:m2.bzl", "m2_compile")
+
+package(
+    default_visibility = ["//visibility:public"],
+)
+
+m2_compile(
+    name = "M2-Mesoplanet-1.M1",
+    srcs = [ 
+        # do not sort
+        "@M2libc//:sys/types.h",
+        "@M2libc//:stddef.h",
+    ] + 
+    select(
+        {
+            "@bazel_tools//src/conditions:linux_x86_64": [
+                # do not sort
+                "@M2libc//:x86/linux/fcntl.c",
+            ],
+        },
+    ) + [
+        "@M2libc//:fcntl.c",
+        "@M2libc//:sys/utsname.h",
+    ] + select(
+        {
+            "@bazel_tools//src/conditions:linux_x86_64": [
+                # do not sort
+                "@M2libc//:x86/linux/unistd.c",
+                "@M2libc//:x86/linux/sys/stat.c",
+            ],
+        },
+    ) + [
+        # do not sort
+        "@M2libc//:stdlib.c",
+        "@M2libc//:stdio.h",
+        "@M2libc//:stdio.c",
+        "@M2libc//:string.c",
+        "@M2libc//:bootstrappable.c",
+        "@M2-Mesoplanet//:cc.h",
+        "@M2-Mesoplanet//:cc_globals.c",
+        "@M2-Mesoplanet//:cc_env.c",
+        "@M2-Mesoplanet//:cc_reader.c",
+        "@M2-Mesoplanet//:cc_spawn.c",
+        "@M2-Mesoplanet//:cc_core.c",
+        "@M2-Mesoplanet//:cc_macro.c",
+        "@M2-Mesoplanet//:cc.c",
+
+    ],
+    architecture = select({
+        "@bazel_tools//src/conditions:linux_x86_64": "x86",
+    }),
+)
+
+m1_expand(
+    name = "M2-Mesoplanet-1.hex2",
+    srcs = select(
+        {
+            "@bazel_tools//src/conditions:linux_x86_64": [
+                # do not sort
+                "@M2libc//:x86/x86_defs.M1",
+                "@M2libc//:x86/libc-full.M1",
+            ],
+        },
+    ) + [
+        ":M2-Mesoplanet-1.M1",
+    ],
+    architecture = select({
+        "@bazel_tools//src/conditions:linux_x86_64": "x86",
+    }),
+    is_little_endian = select({
+        "@bazel_tools//src/conditions:linux_x86_64": True,
+    }),
+    tool = "//tools/stage0/phase9:M1"
+)
+
+hex2_binary(
+    name = "M2-Mesoplanet",
+    srcs = select(
+        {
+            "@bazel_tools//src/conditions:linux_x86_64": [
+                # do not sort
+                "@M2libc//:x86/ELF-x86.hex2",
+            ],
+        },
+    ) + [
+        ":M2-Mesoplanet-1.hex2",
+    ],
+    base_address = "0x8048000",
+    architecture = select({
+        "@bazel_tools//src/conditions:linux_x86_64": "x86",
+    }),
+    is_little_endian = select({
+        "@bazel_tools//src/conditions:linux_x86_64": True,
+    }),
+    tool = "//tools/stage0/phase8:hex2-1"
+)
