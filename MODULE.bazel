@@ -1,0 +1,47 @@
+"stage0-bazel"
+
+module(name = "stage0-bazel")
+
+bazel_dep(name = "bazel_skylib", version = "1.7.1")
+
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+http_archive(
+    name = "hex0-seeds",
+    sha256 = "cf38e87f847365d4ed1a1217a7505e007b0fc85933c01727d5d7462a58592d63",
+    url = "https://github.com/oriansj/bootstrap-seeds/archive/f208be26d4d3c7f5ff42e8a43baf9cad04bdfddc.zip",
+    strip_prefix = "bootstrap-seeds-f208be26d4d3c7f5ff42e8a43baf9cad04bdfddc",
+    build_file = "//third_party:hex0-seeds.BUILD",
+)
+
+http_archive(
+    name = "stage0-x86",
+    build_file = "//third_party:stage0-x86.BUILD",
+    sha256 = "76e11def8aac9189678fea60ff6003e5a33e92531ac97fa1acce39d6c41b89c9",
+    url = "https://github.com/oriansj/stage0-posix-x86/archive/105aebe1e5c38dcd5fd87723f7e49966ad6c436a.zip",
+    strip_prefix = "stage0-posix-x86-105aebe1e5c38dcd5fd87723f7e49966ad6c436a",
+)
+
+http_archive(
+    name = "M2-Planet",
+    build_file = "//third_party:M2-Planet.BUILD",
+    sha256 = "d5eb4348c7952bd5f05921742dfa1b8135b43badbac52710935a6808e30c11f0",
+    url = "https://github.com/oriansj/M2-Planet/archive/5c251e67e28e0a441589b9c3f5150758b8034998.zip",
+    strip_prefix = "M2-Planet-5c251e67e28e0a441589b9c3f5150758b8034998",
+)
+
+http_archive(
+    name = "M2libc",
+    build_file = "//third_party:M2libc.BUILD",
+    sha256 = "53595a6683708e80d8c3ff0954e9e76d9ca9fefea28779873d89daf8ab00851c",
+    url = "https://github.com/oriansj/M2libc/archive/3a700010872697c4be9e3fab3cf707fce706741e.zip",
+    strip_prefix = "M2libc-3a700010872697c4be9e3fab3cf707fce706741e",
+)
+
+http_archive(
+    name = "mescc-tools",
+    build_file = "//third_party:mescc-tools.BUILD",
+    sha256 = "ad0db50e9725713e83a9c7f3e7825858e413f8bab44bebcf96a1b08904226155",
+    url = "https://github.com/oriansj/mescc-tools/archive/08d5a0679fa4dc00babe02306f1bc50703083389.zip",
+    strip_prefix = "mescc-tools-08d5a0679fa4dc00babe02306f1bc50703083389",
+)
