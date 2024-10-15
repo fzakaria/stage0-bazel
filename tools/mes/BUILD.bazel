@@ -1,0 +1,181 @@
+"""Build mes from M2-Planet
+
+GNU Mes is a Scheme interpreter and C compiler for bootstrapping the GNU System.
+"""
+
+load("//tools/stage0:hex2_1.bzl", "hex2_binary")
+load("//tools/stage0:m1.bzl", "m1_expand")
+load("//tools/stage0:m2.bzl", "m2_compile")
+load("//tools/stage0:bloodelf.bzl", "blood_elf")
+
+package(
+    default_visibility = ["//visibility:public"],
+)
+
+m2_compile(
+    name = "mes.M1",
+    srcs = [ 
+        # do not sort
+        "@mes-m2//:include/m2/lib.h",
+    ] + 
+    select(
+        {
+            "@bazel_tools//src/conditions:linux_x86_64": [
+                # do not sort
+                "@mes-m2//:lib/linux/x86-mes-m2/crt1.c",
+                "@mes-m2//:lib/linux/x86-mes-m2/mini.c",
+            ],
+        },
+    ) + [
+        # do not sort
+        "@mes-m2//:lib/mes/globals.c",
+        "@mes-m2//:lib/m2/cast.c",
+        "@mes-m2//:lib/m2/exit.c",
+        "@mes-m2//:lib/mes/mini-write.c",
+    ] + 
+    select(
+        {
+            "@bazel_tools//src/conditions:linux_x86_64": [
+                # do not sort
+                "@mes-m2//:lib/linux/x86-mes-m2/syscall.c",
+                "@mes-m2//:include/linux/x86/syscall.h",
+            ],
+        },
+    ) + [
+        # do not sort
+        "@mes-m2//:lib/linux/brk.c",
+        "@mes-m2//:lib/stdlib/malloc.c",
+        "@mes-m2//:lib/string/memset.c",
+        "@mes-m2//:lib/m2/read.c",
+        "@mes-m2//:lib/mes/fdgetc.c",
+        "@mes-m2//:lib/stdio/getchar.c",
+        "@mes-m2//:lib/stdio/putchar.c",
+        "@mes-m2//:lib/m2/open.c",
+        "@mes-m2//:lib/m2/mes_open.c",
+        "@mes-m2//:lib/string/strlen.c",
+        "@mes-m2//:lib/mes/eputs.c",
+        "@mes-m2//:lib/mes/fdputc.c",
+        "@mes-m2//:lib/mes/eputc.c",
+        "@mes-m2//:include/mes/mes.h",
+        "@mes-m2//:include/mes/builtins.h",
+        "@mes-m2//:include/mes/constants.h",
+        "@mes-m2//:include/mes/symbols.h",
+        "@mes-m2//:lib/mes/__assert_fail.c",
+        "@mes-m2//:lib/mes/assert_msg.c",
+        "@mes-m2//:lib/string/strncmp.c",
+        "@mes-m2//:lib/posix/getenv.c",
+        "@mes-m2//:lib/mes/fdputs.c",
+        "@mes-m2//:lib/mes/ntoab.c",
+        "@mes-m2//:lib/ctype/isdigit.c",
+        "@mes-m2//:lib/ctype/isxdigit.c",
+        "@mes-m2//:lib/ctype/isspace.c",
+        "@mes-m2//:lib/ctype/isnumber.c",
+        "@mes-m2//:lib/mes/abtol.c",
+        "@mes-m2//:lib/stdlib/atoi.c",
+        "@mes-m2//:lib/string/memcpy.c",
+        "@mes-m2//:lib/stdlib/free.c",
+        "@mes-m2//:lib/stdlib/realloc.c",
+        "@mes-m2//:lib/string/strcpy.c",
+        "@mes-m2//:lib/mes/itoa.c",
+        "@mes-m2//:lib/mes/ltoa.c",
+        "@mes-m2//:lib/mes/fdungetc.c",
+        "@mes-m2//:lib/posix/setenv.c",
+        "@mes-m2//:lib/linux/access.c",
+        "@mes-m2//:lib/m2/chmod.c",
+        "@mes-m2//:lib/linux/ioctl3.c",
+        "@mes-m2//:lib/m2/isatty.c",
+        "@mes-m2//:lib/linux/fork.c",
+        "@mes-m2//:lib/m2/execve.c",
+        "@mes-m2//:lib/m2/execv.c",
+        "@mes-m2//:lib/linux/waitpid.c",
+        "@mes-m2//:lib/linux/gettimeofday.c",
+        "@mes-m2//:lib/m2/clock_gettime.c",
+        "@mes-m2//:lib/m2/time.c",
+        "@mes-m2//:lib/linux/_getcwd.c",
+        "@mes-m2//:lib/m2/getcwd.c",
+        "@mes-m2//:lib/linux/dup.c",
+        "@mes-m2//:lib/linux/dup2.c",
+        "@mes-m2//:lib/string/strcmp.c",
+        "@mes-m2//:lib/string/memcmp.c",
+        "@mes-m2//:lib/linux/unlink.c",
+        "@mes-m2//:src/builtins.c",
+        "@mes-m2//:src/core.c",
+        "@mes-m2//:src/display.c",
+        "@mes-m2//:src/eval-apply.c",
+        "@mes-m2//:src/gc.c",
+        "@mes-m2//:src/hash.c",
+        "@mes-m2//:src/lib.c",
+        "@mes-m2//:src/apply-m2.c",
+        "@mes-m2//:src/math.c",
+        "@mes-m2//:src/mes.c",
+        "@mes-m2//:src/module.c",
+        "@mes-m2//:src/posix.c",
+        "@mes-m2//:src/reader.c",
+        "@mes-m2//:src/stack.c",
+        "@mes-m2//:src/string.c",
+        "@mes-m2//:src/struct.c",
+        "@mes-m2//:src/symbol.c",
+        "@mes-m2//:src/vector.c",
+    ],
+    architecture = select({
+        "@bazel_tools//src/conditions:linux_x86_64": "x86",
+    }),
+    is_debug = True,
+    compiler = "@//tools/stage0/phase15:M2-Planet",
+    defines = {
+        "MES_VERSION" : "0.22",
+    },
+)
+
+blood_elf(
+    name = "mes-footer.M1",
+    src = ":mes.M1",
+    is_little_endian = select({
+        "@bazel_tools//src/conditions:linux_x86_64": True,
+    }),
+)
+m1_expand(
+    name = "mes.hex2",
+    srcs = select(
+        {
+            "@bazel_tools//src/conditions:linux_x86_64": [
+                # do not sort
+                "@M2libc//:x86/x86_defs.M1",
+                "@mes-m2//:lib/x86-mes/x86.M1",
+                "@mes-m2//:lib/linux/x86-mes-m2/crt1.M1",
+            ],
+        },
+    ) + [
+        ":mes.M1",
+        ":mes-footer.M1",
+    ],
+    architecture = select({
+        "@bazel_tools//src/conditions:linux_x86_64": "x86",
+    }),
+    is_little_endian = select({
+        "@bazel_tools//src/conditions:linux_x86_64": True,
+    }),
+    tool = "//tools/stage0/phase9:M1"
+)
+
+hex2_binary(
+    name = "mes-m2",
+    srcs = select(
+        {
+            "@bazel_tools//src/conditions:linux_x86_64": [
+                # do not sort
+                "@mes-m2//:lib/m2/x86/ELF-i386-debug.hex2",
+            ],
+        },
+    ) + [
+        ":mes.hex2",
+    ],
+    base_address = "0x1000000",
+    architecture = select({
+        "@bazel_tools//src/conditions:linux_x86_64": "x86",
+    }),
+    is_little_endian = select({
+        "@bazel_tools//src/conditions:linux_x86_64": True,
+    }),
+    tool = "//tools/stage0/phase8:hex2-1"
+)

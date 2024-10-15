@@ -6,4 +6,5 @@ exports_files([
     "hex2.h",
     "hex2_linker.c",
     "hex2_word.c",
+    "get_machine.c",
 ])

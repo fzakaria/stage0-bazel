@@ -13,10 +13,13 @@ def _m2_compile_impl(ctx):
         args.add("--debug")
     args.add("-o", out)
 
+    for key, value in ctx.attr.defines.items():
+        args.add("-D", "{}={}".format(key, value))
+
     ctx.actions.run(
         outputs = [out],
         inputs = ctx.files.srcs,
-        executable = ctx.executable._compiler,
+        executable = ctx.executable.compiler,
         arguments = [args],
         mnemonic = "M2Compile",
     )
@@ -46,11 +49,15 @@ m2_compile = rule(
             default = False,
             doc = "Whether to compile in debug mode.",
         ),
-        "_compiler": attr.label(
+        "compiler": attr.label(
             executable = True,
             cfg = "exec",
             doc = "M2 compiler to use.",
             default = "@//tools/stage0/phase5:M2",
+        ),
+        "defines": attr.string_dict(
+            default = {},
+            doc = "Preprocessor definitions (key-value pairs) to pass to the compiler.",
         ),
     },
     doc = """Compiles C files into a M1 program.""",

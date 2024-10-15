@@ -1,6 +1,6 @@
 {
   "lockFileVersion": 6,
-  "moduleFileHash": "4f0a2404a92e6c9bcfbe977607aea3c222863eac03abc643ed4667893239c03b",
+  "moduleFileHash": "1de4091ffb28fd50cc8e42d95bc9fe1d375eab4580b3daec0580e0074293c562",
   "flags": {
     "cmdRegistries": [
       "https://bcr.bazel.build/"
@@ -37,8 +37,10 @@
             "hex0-seeds": "hex0-seeds",
             "stage0-x86": "stage0-x86",
             "M2-Planet": "M2-Planet",
+            "M2-Mesoplanet": "M2-Mesoplanet",
             "M2libc": "M2libc",
-            "mescc-tools": "mescc-tools"
+            "mescc-tools": "mescc-tools",
+            "mes-m2": "mes-m2"
           },
           "devImports": [],
           "tags": [
@@ -93,6 +95,22 @@
             {
               "tagName": "@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
               "attributeValues": {
+                "build_file": "//third_party:M2-Mesoplanet.BUILD",
+                "sha256": "0b217da99ab0b974a52ca63030b8dc3488ebad5f07cb64a794ad1cacfbba6b09",
+                "url": "https://github.com/oriansj/M2-Mesoplanet/archive/3dcbd0bc5f4d76d2c1cc8f6e5bafa4b214127b7d.zip",
+                "strip_prefix": "M2-Mesoplanet-3dcbd0bc5f4d76d2c1cc8f6e5bafa4b214127b7d",
+                "name": "M2-Mesoplanet"
+              },
+              "devDependency": false,
+              "location": {
+                "file": "@@//:MODULE.bazel",
+                "line": 33,
+                "column": 13
+              }
+            },
+            {
+              "tagName": "@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
+              "attributeValues": {
                 "build_file": "//third_party:M2libc.BUILD",
                 "sha256": "53595a6683708e80d8c3ff0954e9e76d9ca9fefea28779873d89daf8ab00851c",
                 "url": "https://github.com/oriansj/M2libc/archive/3a700010872697c4be9e3fab3cf707fce706741e.zip",
@@ -102,7 +120,7 @@
               "devDependency": false,
               "location": {
                 "file": "@@//:MODULE.bazel",
-                "line": 33,
+                "line": 41,
                 "column": 13
               }
             },
@@ -118,7 +136,23 @@
               "devDependency": false,
               "location": {
                 "file": "@@//:MODULE.bazel",
-                "line": 41,
+                "line": 49,
+                "column": 13
+              }
+            },
+            {
+              "tagName": "@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
+              "attributeValues": {
+                "build_file": "//third_party:mes-m2.BUILD",
+                "sha256": "c2843187b8420a25405f3eba5855e3d4eedaafafdaedfc0dab22f0598ae94f46",
+                "url": "https://github.com/oriansj/mes-m2/archive/d1a31270c65eba2566d64562c7e52de18e11b9aa.zip",
+                "strip_prefix": "mes-m2-d1a31270c65eba2566d64562c7e52de18e11b9aa",
+                "name": "mes-m2"
+              },
+              "devDependency": false,
+              "location": {
+                "file": "@@//:MODULE.bazel",
+                "line": 58,
                 "column": 13
               }
             }
