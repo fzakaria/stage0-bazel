@@ -10,6 +10,9 @@ def _blood_elf_impl(ctx):
         args.add("--little-endian")
     else:
         args.add("--big-endian")
+
+    if (ctx.attr.is_64):
+        args.add("--64")
     args.add("-f", ctx.file.src)
     args.add("-o", out)
 
@@ -37,6 +40,11 @@ blood_elf = rule(
             default = False,
             mandatory = True,
             doc = "Whether to expand in little endian mode.",
+        ),
+        "is_64": attr.bool(
+            default = False,
+            mandatory = False,
+            doc = "Whether to expand in 64-bit mode.",
         ),
         "_bloodelf": attr.label(
             executable = True,
