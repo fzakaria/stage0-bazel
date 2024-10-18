@@ -58,7 +58,7 @@ http_archive(
 http_archive(
     name = "mes-m2",
     build_file = "//third_party:mes-m2.BUILD",
-    sha256 = "c2843187b8420a25405f3eba5855e3d4eedaafafdaedfc0dab22f0598ae94f46",
-    url = "https://github.com/oriansj/mes-m2/archive/d1a31270c65eba2566d64562c7e52de18e11b9aa.zip",
-    strip_prefix = "mes-m2-d1a31270c65eba2566d64562c7e52de18e11b9aa",
+    sha256 = "033ee656d98cfc04a826eab27eed6e6a276d15bbb980a7cd71d00f30227aaaa8",
+    url = "https://mirror.team-cymru.com/gnu/mes/mes-0.27.tar.gz",
+    strip_prefix = "mes-0.27",
 )
