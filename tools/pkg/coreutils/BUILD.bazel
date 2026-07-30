@@ -1,0 +1,218 @@
+"""GNU coreutils 5.0.
+
+Sixty-odd programs, and the reason every later package can run `make
+install`: cp, mkdir, rm, ln, install and the rest. 5.0 rather than anything
+current because later releases depend on gnulib modules mes-libc cannot
+satisfy; this is the version live-bootstrap and nixpkgs both bootstrap
+through.
+
+The makefile and the eight patches are live-bootstrap's, vendored so that no
+file outside the audited graph enters the build. The patches work around
+mes-libc: no mbstate_t, no strcoll, no locale.
+"""
+
+load("@bazel_skylib//rules:write_file.bzl", "write_file")
+load("//tools/pkg:defs.bzl", "installed_program")
+load("//tools/stage0:files.bzl", "tool_dir")
+load("//tools/stage0:kaem.bzl", "RELATIVE_PREFIXES", "kaem_run")
+load("//tools/verify:run_test.bzl", "program_output_test")
+
+package(
+    default_visibility = ["//visibility:public"],
+)
+
+PREFIX = "coreutils-5.0"
+
+PATCHES = [
+    # modechange.h uses declarations from sys/stat.h, so it has to be
+    # included after it.
+    "patches/modechange.patch",
+    # mes-libc has no mbstate_t; this is glibc 2.32's definition.
+    "patches/mbstate.patch",
+    # The rest replace locale-aware calls mes-libc does not provide with
+    # their byte-comparison equivalents.
+    "patches/ls-strcmp.patch",
+    "patches/touch-getdate.patch",
+    "patches/touch-dereference.patch",
+    "patches/expr-strcmp.patch",
+    "patches/sort-locale.patch",
+    "patches/uniq-fopen.patch",
+]
+
+MAKEFILE = "mk/main.mk"
+
+# The compiler as the makefile invokes it. Every include directory appears
+# once per directory level because make runs one level down, in the unpacked
+# tree, and these paths are relative to the execroot; the same reasoning as
+# for PATH in kaem.bzl. tinycc keeps only the last -B it is given, so that one
+# takes a single depth.
+_DIRECTORIES = [
+    "${tcc_include}",
+    "${mes_arch_include}",
+    "${mes_include}",
+]
+
+_CC = " ".join(
+    ["CC=\"tcc -B ../${tcc_libs}"] +
+    [
+        "-I " + prefix + directory
+        for prefix in RELATIVE_PREFIXES
+        for directory in _DIRECTORIES
+    ],
+) + "\""
+
+write_file(
+    name = "build_script",
+    out = "coreutils.kaem",
+    content = [
+        "# Unpack.",
+        "ungz --file ${tarball} --output source.tar",
+        "untar --file source.tar",
+        "",
+        "# Patch. -d keeps the directory change inside patch, so PATH -- whose",
+        "# entries are relative to the execroot -- keeps working.",
+    ] + [
+        "patch -d %s -Np0 -i ../tools/pkg/coreutils/%s" % (PREFIX, patch)
+        for patch in PATCHES
+    ] + [
+        "",
+        "# What ./configure would have written. Nothing defines HAVE_CONFIG_H,",
+        "# so the file only has to exist for the sources that include it",
+        "# unconditionally.",
+        "catm %s/config.h" % PREFIX,
+        "",
+        "# Headers upstream's ./configure generates. It renames each of these",
+        "# after deciding whether the system already provides one; mes-libc",
+        "# provides none of the three, so the bundled version is always the",
+        "# one that is wanted and a copy is the whole of the decision.",
+    ] + [
+        "cp %s/lib/%s_.h %s/lib/%s.h" % (PREFIX, header, PREFIX, header)
+        for header in [
+            "fnmatch",
+            "ftw",
+            "search",
+        ]
+    ] + [
+        "",
+        "# false is true with the words swapped, which upstream's makefile",
+        "# builds with a shell recipe. Doing it here instead keeps make from",
+        "# needing a shell at all: the quotes in that recipe are exactly what",
+        "# would send make looking for /bin/sh.",
+        "cp %s/src/true.c %s/src/false.c" % (PREFIX, PREFIX),
+        " ".join([
+            "sed -i",
+            "-e s/true/false/g",
+            "-e s/success/failure/g",
+            "-e s/(EXIT_SUCCESS)/(EXIT_FAILURE)/g",
+            "%s/src/false.c" % PREFIX,
+        ]),
+        "",
+        "# Build. make -C rather than cd, for the same reason as patch -d.",
+        "make -C %s -f ../tools/pkg/coreutils/%s %s" % (PREFIX, MAKEFILE, _CC),
+        "",
+        "# Install. The makefile's install target runs the install program it",
+        "# just built, so PREFIX is relative to the directory make runs in.",
+        "mkdir -p ${out}/bin",
+        "make -C %s -f ../tools/pkg/coreutils/%s %s install PREFIX=../${out}" %
+        (PREFIX, MAKEFILE, _CC),
+        "",
+    ],
+)
+
+kaem_run(
+    name = "coreutils",
+    script = "coreutils.kaem",
+    srcs = PATCHES + [
+        MAKEFILE,
+        "//tools/tcc/current:src",
+        "//tools/mes:arch_headers",
+        "//tools/mes:header_dir",
+    ],
+    substitutions = {"tarball": "@coreutils-src//file"},
+    directory_substitutions = {
+        "tcc_libs": "//tools/tcc/current:tcc_libs",
+        "tcc_include": "//tools/tcc/current:src_include_dir",
+        "mes_arch_include": "//tools/mes:arch_include_dir",
+        "mes_include": "//tools/mes:header_dir",
+    },
+    tools = [
+        ":tcc",
+        "//tools/mescc-tools-extra:bin",
+        "//tools/pkg/gnumake:bin",
+        "//tools/pkg/gnupatch:bin",
+        "//tools/pkg/gnused:bin",
+    ],
+)
+
+tool_dir(
+    name = "tcc",
+    tools = {"tcc": "//tools/tcc/current:tcc"},
+)
+
+# The programs later packages actually reach for. The rest are built and
+# installed; these are the ones given a target so a build can depend on them.
+PROGRAMS = [
+    "cat",
+    "chmod",
+    "cp",
+    "echo",
+    "expr",
+    "install",
+    "ln",
+    "ls",
+    "mkdir",
+    "mv",
+    "printf",
+    "pwd",
+    "rm",
+    "rmdir",
+    "sort",
+    "tr",
+    "true",
+    "false",
+    "test",
+    "touch",
+    "uniq",
+    "wc",
+]
+
+[
+    installed_program(
+        name = program,
+        package = ":coreutils",
+        program = program,
+    )
+    for program in PROGRAMS
+]
+
+tool_dir(
+    name = "bin",
+    tools = {program: ":" + program for program in PROGRAMS},
+)
+
+program_output_test(
+    name = "coreutils_echo_test",
+    program = ":echo",
+    arguments = ["coreutils works"],
+    expected_output = "coreutils works",
+)
+
+# tr reads its input, which exercises the library half of the package rather
+# than only argument handling. wc would do as well but pads its count to a
+# fixed width, and that width is not something a test should pin down.
+program_output_test(
+    name = "coreutils_tr_test",
+    program = ":tr",
+    arguments = ["a-z", "A-Z"],
+    stdin = "coreutils works",
+    expected_output = "COREUTILS WORKS",
+)
+
+# sort is the program the mes-libc collation patches were written for, so it
+# is worth checking that ordering actually happens.
+program_output_test(
+    name = "coreutils_sort_test",
+    program = ":sort",
+    stdin = "pear\napple\nmango",
+    expected_output = "apple\nmango\npear",
+)

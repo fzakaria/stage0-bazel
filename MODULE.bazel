@@ -151,3 +151,12 @@ http_file(
     url = "https://mirror.team-cymru.com/gnu/grep/grep-2.4.tar.gz",
     downloaded_file_path = "grep-2.4.tar.gz",
 )
+
+# GNU coreutils 5.0. Later releases pull in gnulib modules mes-libc cannot
+# satisfy, which is why both reference bootstraps stop here.
+http_file(
+    name = "coreutils-src",
+    sha256 = "c27ce75e3f62455f4facf4f3fd55bc9e3877d0ab1d5c0426c94da168cc349883",
+    url = "https://mirror.team-cymru.com/gnu/coreutils/coreutils-5.0.tar.gz",
+    downloaded_file_path = "coreutils-5.0.tar.gz",
+)
