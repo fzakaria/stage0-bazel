@@ -34,6 +34,61 @@ upstream's ./configure satisfies that by copying the headers for the selected
 target into an `arch` directory. This rule is the same trick without a shell.""",
 )
 
+ToolDirInfo = provider(
+    doc = "A directory of executables, suitable for putting on PATH.",
+    fields = {
+        "path": "string: execroot-relative directory holding the tools",
+        "files": "depset[File]: the tool symlinks and everything they need",
+    },
+)
+
+def _tool_dir_impl(ctx):
+    links = []
+    for name, target in ctx.attr.tools.items():
+        executable = target[DefaultInfo].files_to_run.executable
+        if executable == None:
+            fail("%s is not executable, so it cannot go in a tool directory" % target.label)
+
+        # The name matters: M2-Mesoplanet and kaem look their helpers up by
+        # bare name, so `M2-Planet` has to be called exactly that regardless of
+        # which phase built it.
+        link = ctx.actions.declare_file(ctx.label.name + "/" + name)
+        ctx.actions.symlink(output = link, target_file = executable, is_executable = True)
+        links.append(link)
+
+    if not links:
+        fail("a tool directory with no tools is never what was meant")
+
+    return [
+        ToolDirInfo(
+            path = links[0].dirname,
+            files = depset(links, transitive = [
+                target[DefaultInfo].default_runfiles.files
+                for target in ctx.attr.tools.values()
+            ]),
+        ),
+        DefaultInfo(files = depset(links)),
+    ]
+
+tool_dir = rule(
+    implementation = _tool_dir_impl,
+    attrs = {
+        "tools": attr.string_keyed_label_dict(
+            allow_files = True,
+            cfg = "exec",
+            mandatory = True,
+            doc = "Map of the name a tool must be found under to the target providing it.",
+        ),
+    },
+    provides = [ToolDirInfo],
+    doc = """Collects executables into one directory under their expected names.
+
+Tools written for the bootstrap find each other through PATH by bare name:
+M2-Mesoplanet spawns `M2-Planet`, `blood-elf`, `M1` and `hex2`, and kaem
+scripts call `cp` and `mkdir`. Nothing in this repository is named that way on
+disk, so this rule builds the directory those lookups expect.""",
+)
+
 def _source_path(f):
     """Returns a file's path relative to the repository that declares it.
 

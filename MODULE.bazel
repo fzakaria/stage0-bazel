@@ -63,6 +63,16 @@ http_archive(
     strip_prefix = "mes-0.27",
 )
 
+# The small utilities every later bootstrap step is written against: ungz,
+# untar, cp, mkdir, replace and friends. Built with M2-Mesoplanet, not mescc.
+http_archive(
+    name = "mescc-tools-extra",
+    build_file = "//third_party:mescc-tools-extra.BUILD",
+    sha256 = "cbab7cf3d7f229d7be9ebc821bdbac6a5037638cbfcbfe2b00a98572734f7cc9",
+    url = "https://github.com/oriansj/mescc-tools-extra/archive/71698f80e35618ccce0a3dc5ace82177c8ca8f14.zip",
+    strip_prefix = "mescc-tools-extra-71698f80e35618ccce0a3dc5ace82177c8ca8f14",
+)
+
 # tinycc, already carrying the mes bootstrap patches on its mes-0.27 branch.
 # Taking it pre-patched means the bootstrap needs no `patch` tool.
 http_archive(

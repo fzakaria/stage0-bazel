@@ -1,0 +1,93 @@
+"""The utilities every later bootstrap step is written against.
+
+kaem is a shell with no builtins to speak of, so a kaem script that wants to
+unpack a tarball or copy a file needs a program for it. These are those
+programs. They are compiled with M2-Mesoplanet rather than mescc because they
+are plain C that M2-Planet handles directly, and because M2-Mesoplanet is much
+faster than running mescc under a Scheme interpreter.
+"""
+
+load("//tools/stage0:files.bzl", "patched_tree", "tool_dir")
+load("//tools/stage0:mesoplanet.bzl", "m2_mesoplanet_binary")
+
+package(
+    default_visibility = ["//visibility:public"],
+)
+
+# untar creates symbolic links, and the M2libc revision the earlier phases are
+# pinned to has no symlink(). Backport it rather than move the whole version
+# set: a newer M2libc changes bootstrap.c in ways the pinned M2-Planet cannot
+# compile, and phase 5 stops building.
+#
+# The body is copied verbatim from M2libc b7e5d1c; syscall 88 is symlink(2) on
+# amd64.
+patched_tree(
+    name = "m2libc",
+    srcs = ["@M2libc//:tree"],
+    prefix = "m2libc",
+    substitutions = {
+        "amd64/linux/unistd.c": [
+            "int _getcwd(char* buf, int size)",
+            """int symlink(char *path1, char *path2)
+{
+\tasm("lea_rdi,[rsp+DWORD] %16"
+\t    "mov_rdi,[rdi]"
+\t    "lea_rsi,[rsp+DWORD] %8"
+\t    "mov_rsi,[rsi]"
+\t    "mov_rax, %88"
+\t    "syscall");
+}
+
+int _getcwd(char* buf, int size)""",
+        ],
+    },
+)
+
+# M2-Mesoplanet spawns these four by bare name through PATH.
+tool_dir(
+    name = "backend",
+    tools = {
+        "M2-Planet": "//tools/stage0/phase15:M2-Planet",
+        "blood-elf": "//tools/stage0/phase13:blood-elf",
+        "M1": "//tools/stage0/phase9:M1",
+        "hex2": "//tools/stage0/phase10:hex2",
+    },
+)
+
+# The list from upstream's mescc-tools-extra.kaem. sha3sum is omitted because
+# nothing in the bootstrap uses it.
+UTILITIES = [
+    "catm",
+    "chmod",
+    "cp",
+    "match",
+    "mkdir",
+    "replace",
+    "rm",
+    "sha256sum",
+    "unbz2",
+    "ungz",
+    "untar",
+    "unxz",
+    "wrap",
+]
+
+[
+    m2_mesoplanet_binary(
+        name = name,
+        src = "@mescc-tools-extra//:%s.c" % name,
+        m2libc = [":m2libc"],
+        compiler = "//tools/stage0/phase12:M2-Mesoplanet",
+        tools = ":backend",
+    )
+    for name in UTILITIES
+]
+
+# Everything a kaem script can call, under the names it calls them by.
+tool_dir(
+    name = "bin",
+    tools = dict(
+        [(name, ":" + name) for name in UTILITIES] +
+        [("kaem", "//tools/stage0/phase11:kaem")],
+    ),
+)

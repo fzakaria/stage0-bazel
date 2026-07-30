@@ -20,3 +20,14 @@ exports_files([
     "sys/utsname.h",
     "string.c",
 ])
+
+# M2-Mesoplanet resolves its C library through M2LIBC_PATH rather than through
+# -I flags, so it needs the whole tree rather than a curated list.
+filegroup(
+    name = "tree",
+    srcs = glob(
+        ["**"],
+        exclude = ["BUILD.bazel"],
+    ),
+    visibility = ["//visibility:public"],
+)
