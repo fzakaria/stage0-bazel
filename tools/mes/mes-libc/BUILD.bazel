@@ -190,6 +190,10 @@ LIBC_SOURCES = [
     "@mes-m2//:lib/linux/time.c",
     "@mes-m2//:lib/linux/umask.c",
     "@mes-m2//:lib/linux/uname.c",
+    # ldexpl is ours; upstream takes it from an unreleased mes branch that
+    # is not fetchable. It sits here, between the two halves of the list,
+    # because that is where nixpkgs' minimal-bootstrap puts it.
+    "ldexpl.c",
     "@mes-m2//:lib/linux/unlink.c",
     "@mes-m2//:lib/linux/utimensat.c",
     "@mes-m2//:lib/linux/wait4.c",
@@ -355,9 +359,7 @@ LIBC_SOURCES = [
 
 cat_files(
     name = "libc.c",
-    # ldexpl is ours; see the comment at the top of the file for why it is
-    # not taken from upstream like everything else here.
-    srcs = LIBC_SOURCES + ["ldexpl.c"],
+    srcs = LIBC_SOURCES,
 )
 
 # tinycc links crt1.o, and crti.o/crtn.o bracket the init and fini sections.
