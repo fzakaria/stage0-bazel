@@ -17,28 +17,42 @@ the host participates, and that claim is checked rather than asserted; see
 | M2-Planet, M1, blood-elf, kaem, M2-Mesoplanet, get_machine (phases 6–15) | ✅ |
 | GNU Mes (Scheme interpreter) | ✅ boots and evaluates |
 | mescc (C99 compiler) and the mes C library | ✅ compiles and links working programs |
-| tinycc (`tcc-mes`) | ❌ not started |
+| tinycc (`tcc-mes`, i386 target) | ✅ builds, runs, compiles C to i386 objects |
+| tinycc hosted natively on x86-64 | ❌ blocked, see below |
 | binutils, GCC 4.7 (first with usable C++), modern GCC | ❌ not started |
 
 **There is no C or C++ `cc_toolchain` yet, and this module cannot build
-ordinary C++ code.** mescc is a bootstrap compiler: it accepts a subset of C99,
-and no C++ at all. Registering a `cc_toolchain` on top of it would advertise a
-capability that does not exist, so that wiring is deliberately deferred until
-the chain reaches a compiler that can compile C++ — see [Roadmap](#roadmap).
+ordinary C++ code.** Neither mescc nor tinycc 0.9.27 compiles C++, and
+registering a `cc_toolchain` on top of them would advertise a capability that
+does not exist. That wiring is deliberately deferred until the chain reaches a
+compiler that can compile C++ — see [Roadmap](#roadmap).
 
-What *does* work today is that a C program can be compiled and linked by a
-compiler whose entire ancestry is in this repository:
+What *does* work today is that C is compiled and linked by compilers whose
+entire ancestry is in this repository:
 
 ```console
-$ bazel test //tools/mes/tests:hello_test
-//tools/mes/tests:hello_test                                    PASSED in 0.1s
+$ bazel test //...
+//tools/mes:mes_boot_test                                       PASSED
+//tools/mes/tests:hello_test                                    PASSED
+//tools/stage0/phase0:hex0-diff                                 PASSED
+//tools/stage0/phase2:catm-diff-test                            PASSED
+//tools/tcc:tcc_version_test                                    PASSED
 
 $ bazel run //tools/mes/tests:hello
 hello from mescc
+
+$ bazel run //:tcc-mes -- -v
+tcc version 0.9.27 (i386 Linux)
 ```
 
-That binary is a statically linked x86-64 ELF executable whose only untrusted
-input is the hex0 seed.
+Those binaries are statically linked x86-64 ELF executables whose only
+untrusted input is the hex0 seed.
+
+`tcc-mes` targets i386 while running as x86-64, which makes it a cross
+compiler. That is not a shortcut: the 64-bit code paths in tinycc reach
+`Elf64_*` typedefs that mescc's C parser cannot handle, and i386 is the target
+upstream and live-bootstrap bootstrap through. Moving the chain to a natively
+hosted x86-64 tcc is a later step.
 
 ## Building
 
@@ -102,7 +116,7 @@ mescc_binary(
 
 The bootstrapped tools are also available under stable labels:
 `@stage0-bazel//:hex2`, `//:M1`, `//:blood-elf`, `//:M2-Planet`,
-`//:M2-Mesoplanet`, `//:get_machine`, `//:kaem` and `//:mes`.
+`//:M2-Mesoplanet`, `//:get_machine`, `//:kaem`, `//:mes` and `//:tcc-mes`.
 
 ## How the pieces fit
 
@@ -130,11 +144,9 @@ The remaining path to C++ follows
 [live-bootstrap](https://github.com/fosslinux/live-bootstrap), which is the
 reference for how far this has to go:
 
-1. **tinycc 0.9.26 (`tcc-mes`)**, compiled by mescc. The
-   [janneke/tinycc](https://gitlab.com/janneke/tinycc) `mes-0.27` branch is
-   pre-patched for this, so no `patch` tool is needed. It needs the `libc+tcc`
-   archive and the single-file library amalgamations mes normally generates in
-   `build-aux/build-source-lib.sh`, both of which are plain concatenation.
+1. **A natively hosted tcc.** `tcc-mes` currently emits i386 code. Either
+   build an i386 mes so the whole chain is 32-bit as live-bootstrap does, or
+   use the i386 tcc to build an x86-64 tcc.
 2. **tinycc 0.9.27**, rebuilt several times against musl.
 3. **The shell-script problem.** Everything past tinycc — binutils, GCC — is
    built by `./configure && make`. live-bootstrap solves this by bootstrapping

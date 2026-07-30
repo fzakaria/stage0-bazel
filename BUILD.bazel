@@ -55,6 +55,12 @@ alias(
     actual = "//tools/mes:mescc",
 )
 
+# tinycc, compiled by mescc. Targets i386; see tools/tcc/BUILD.bazel.
+alias(
+    name = "tcc-mes",
+    actual = "//tools/tcc:tcc-mes",
+)
+
 # Building this asserts that nothing in the bootstrap graph runs a program the
 # graph did not build. Run it in CI.
 alias(

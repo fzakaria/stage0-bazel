@@ -63,6 +63,16 @@ http_archive(
     strip_prefix = "mes-0.27",
 )
 
+# tinycc, already carrying the mes bootstrap patches on its mes-0.27 branch.
+# Taking it pre-patched means the bootstrap needs no `patch` tool.
+http_archive(
+    name = "tinycc",
+    build_file = "//third_party:tinycc.BUILD",
+    sha256 = "313ebbde827e5b0c61a7dd553c5729b151507b42285cc9740e0f4fb6607a0442",
+    url = "https://gitlab.com/janneke/tinycc/-/archive/0bbd2af306a660fe19ad660034179ba973ca0449/tinycc-0bbd2af306a660fe19ad660034179ba973ca0449.tar.gz",
+    strip_prefix = "tinycc-0bbd2af306a660fe19ad660034179ba973ca0449",
+)
+
 # The C99 parser mescc is written against. Mes ships only two nyacc compat
 # shims, not the parser itself, so mescc cannot run without this.
 http_archive(

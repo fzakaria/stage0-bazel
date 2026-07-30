@@ -283,6 +283,7 @@ mescc_toolchain(
         "@mes-m2//:arch_support",
         "//tools/mes/lib:crt1",
         "//tools/mes/lib:libc",
+        "//tools/mes/lib:libc_tcc",
         "//tools/mes/lib:libmescc",
     ],
     library_dir_markers = [

@@ -13,6 +13,7 @@ package(
 no_native_toolchain_audit(
     name = "no_native_toolchain",
     targets = [
+        "//tools/tcc:tcc-mes",
         "//tools/mes/tests:hello",
         "//tools/mes/lib:libc",
         "//tools/mes:mes",

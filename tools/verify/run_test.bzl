@@ -9,11 +9,14 @@ its output against what the test expects.
 def _program_output_test_impl(ctx):
     program = ctx.executable.program
 
+    # stderr is folded into stdout: freestanding programs from this chain are
+    # as likely to report on one as the other, and tcc prints its version
+    # banner to stderr.
     ctx.actions.write(
         output = ctx.outputs.executable,
         content = """#!/bin/sh
 RUNFILES="${{TEST_SRCDIR:-$0.runfiles}}"
-actual=$("$RUNFILES/{workspace}/{program}") || exit 1
+actual=$("$RUNFILES/{workspace}/{program}" {args} 2>&1) || exit 1
 expected='{expected}'
 if [ "$actual" != "$expected" ]; then
     echo "expected: $expected" >&2
@@ -23,6 +26,7 @@ fi
 """.format(
             workspace = ctx.workspace_name,
             program = program.short_path,
+            args = " ".join(ctx.attr.arguments),
             expected = ctx.attr.expected_output,
         ),
         is_executable = True,
@@ -39,6 +43,9 @@ program_output_test = rule(
             cfg = "target",
             mandatory = True,
             doc = "The bootstrapped binary to run.",
+        ),
+        "arguments": attr.string_list(
+            doc = "Command line arguments to pass to the program.",
         ),
         "expected_output": attr.string(
             mandatory = True,

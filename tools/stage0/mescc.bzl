@@ -215,6 +215,11 @@ def _mescc_object_impl(ctx):
 
     args = _common_args(ctx, mescc_info)
     args.add("-c")
+
+    # Target-specific include directories come after the toolchain's, so a
+    # header shipped with mes still wins over one of the same name here.
+    for marker in ctx.files.include_dir_markers:
+        args.add("-I", marker.dirname)
     for define in ctx.attr.defines:
         args.add("-D", define)
     args.add("-o", obj)
@@ -222,7 +227,10 @@ def _mescc_object_impl(ctx):
 
     ctx.actions.run(
         outputs = [obj, listing],
-        inputs = _mescc_action_inputs(mescc_info, [ctx.file.src] + ctx.files.hdrs),
+        inputs = _mescc_action_inputs(
+            mescc_info,
+            [ctx.file.src] + ctx.files.hdrs + ctx.files.include_dir_markers,
+        ),
         executable = mescc_info.mes.interpreter,
         arguments = [args],
         env = _mescc_env(mescc_info),
@@ -237,6 +245,10 @@ mescc_object = rule(
     attrs = {
         "src": attr.label(allow_single_file = [".c"], mandatory = True),
         "hdrs": attr.label_list(allow_files = True, doc = "Headers the source includes."),
+        "include_dir_markers": attr.label_list(
+            allow_files = True,
+            doc = "One file per extra -I directory, sitting directly in it.",
+        ),
         "defines": attr.string_list(doc = "Preprocessor definitions, as NAME=VALUE."),
         "toolchain": attr.label(providers = [MesccInfo], mandatory = True),
     },
@@ -333,6 +345,13 @@ def _mescc_binary_impl(ctx):
     for library in ctx.attr.libraries:
         args.add("-l", library)
     args.add("-o", out)
+
+    # Objects, not the assembly listings. Upstream's own build scripts hand
+    # mescc the listings, but mescc then reassembles each one into an object
+    # beside it, and under a sandbox that directory holds another action's
+    # declared outputs and is read-only. Linking objects avoids the write; the
+    # cost is that blood-elf sees only the first object's symbols, so debug
+    # info for a multi-object program is incomplete.
     args.add_all(objects)
 
     ctx.actions.run(
