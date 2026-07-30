@@ -267,6 +267,7 @@ def configure_package(
         patches = [],
         patch_labels = [],
         patch_strip = 1,
+        extra_tarballs = {},
         srcs = [],
         compression = "gz",
         decompressor = DECOMPRESS_SEED,
@@ -302,6 +303,9 @@ def configure_package(
         patches: Execroot-relative paths of patch files.
         patch_labels: The same patches as labels, so they reach the action.
         patch_strip: The -p level the patches are written against.
+        extra_tarballs: Further archives unpacked beside the main one, as a
+            map of script-variable name to label. A package like GCC ships
+            its front ends and its arbitrary-precision libraries separately.
         srcs: Additional files the build reads.
         compression: Archive compression: "gz", "bz2" or "xz".
         decompressor: DECOMPRESS_SEED for mescc-tools-extra's inflate, or
@@ -361,6 +365,19 @@ def configure_package(
             "",
         ]
 
+    # Further archives unpacked beside the main one. These always go through
+    # the built gzip: a package that ships several tarballs is late enough in
+    # the chain to have one.
+    if extra_tarballs:
+        lines.append("# Unpack the archives that travel with it.")
+        for archive in sorted(extra_tarballs):
+            lines += [
+                "cp ${%s} %s.tar.gz" % (archive, archive),
+                "gzip -d %s.tar.gz" % archive,
+                "untar --file %s.tar" % archive,
+            ]
+        lines.append("")
+
     if patches:
         lines.append("# Patch, relative to the unpacked tree.")
         for patch in patches:
@@ -391,10 +408,13 @@ def configure_package(
     kaem_run(
         name = name,
         script = name + ".kaem",
-        substitutions = {
-            "tarball": tarball,
-            "driver": name + "_build.sh",
-        },
+        substitutions = dict(
+            {
+                "tarball": tarball,
+                "driver": name + "_build.sh",
+            },
+            **extra_tarballs
+        ),
         directory_substitutions = {"toolchain": toolchain} if uses_toolchain else {
             "tcc_libs": tcc_libs,
             "tcc_include": tcc_include,
@@ -419,7 +439,7 @@ def configure_package(
             name + "_tcc",
         ] + tools + ([
             "//tools/pkg/gzip:bin",
-        ] if decompressor == DECOMPRESS_GNU else []) + [
+        ] if (decompressor == DECOMPRESS_GNU or extra_tarballs) else []) + [
             "//tools/pkg/coreutils:bin",
             "//tools/pkg/bash:bin",
             "//tools/pkg/gnugrep:bin",

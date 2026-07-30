@@ -1,0 +1,145 @@
+"""GCC 4.6.4, C only. NOT COMPLETE YET.
+
+The last GCC release that can be built by a compiler as limited as tinycc,
+which is why both reference bootstraps go through it. This stage builds the C
+compiler; the C++ front end is unpacked with it so the same tree can be
+reconfigured for C++ afterwards.
+
+The recipe is nixpkgs' minimal-bootstrap gcc/4.6.nix. gmp, mpfr and mpc are
+unpacked beside the GCC tree and linked into it under the names GCC's
+top-level configure looks for, so it builds them in-tree.
+
+Where it stands: the tarballs unpack, the patches apply, and configure gets
+as far as the per-directory configures. What is still missing:
+
+  - `cmp`, from diffutils, which is not built yet. GCC's configure and ld's
+    emultempl scripts both call it.
+  - `sleep`, which coreutils 5.0 does provide but which does not work when
+    built against mes-libc -- it cannot read the realtime clock. A coreutils
+    rebuilt against musl would fix it.
+  - "no usable dependency style found" from a subdirectory configure, even
+    though --disable-dependency-tracking is passed at the top level.
+
+untar also writes an @LongLink file when unpacking gcc-g++, so it does not
+handle the GNU long-filename extension; that will matter for the C++ stage
+even though it has not bitten yet.
+
+Tagged manual until it builds.
+"""
+
+load("//tools/pkg:configure.bzl", "DECOMPRESS_GNU", "LIBC_HEADERS_TOOLCHAIN", "configure_package")
+load("//tools/pkg:defs.bzl", "installed_program")
+load("//tools/stage0:files.bzl", "tool_dir")
+load("//tools/verify:run_test.bzl", "program_output_test")
+
+package(
+    default_visibility = ["//visibility:public"],
+)
+
+PATCHES = [
+    # GCC's makefile hardcodes /usr/include as the native system header
+    # directory. There is no /usr/include in this world, and picking one up
+    # would end the bootstrap.
+    "patches/no-system-headers.patch",
+]
+
+configure_package(
+    name = "gcc_dist",
+    tarball = "@gcc-core-src//file",
+    prefix = "gcc-4.6.4",
+    libc_headers = LIBC_HEADERS_TOOLCHAIN,
+    decompressor = DECOMPRESS_GNU,
+    extra_tarballs = {
+        "gpp": "@gcc-gpp-src//file",
+        "gmp": "@gmp-src//file",
+        "mpfr": "@mpfr-src//file",
+        "mpc": "@mpc-src//file",
+    },
+    patches = ["tools/pkg/gcc/" + patch for patch in PATCHES],
+    patch_labels = PATCHES,
+    extra_setup = [
+        # GCC's configure builds these in-tree when it finds them under these
+        # names. They are unpacked as siblings, so the links point up.
+        "ln -s ../gmp-4.3.2 gmp",
+        "ln -s ../mpfr-2.4.2 mpfr",
+        "ln -s ../mpc-1.0.3 mpc",
+    ],
+    exports = [
+        "AR=\"tcc -ar\"",
+        "RANLIB=true",
+        "CFLAGS=-O2",
+        # mpfr's sources include each other by bare name during the in-tree
+        # build, and the compiler's own headers have to stay reachable.
+        "C_INCLUDE_PATH=\"$root/$toolchain/include:$PWD/mpfr/src\"",
+        "CPLUS_INCLUDE_PATH=\"$C_INCLUDE_PATH\"",
+        "lt_cv_shlibpath_overrides_runpath=yes",
+        # Probes that need to run a linked program to answer, which a build
+        # like this cannot do. These are the answers for Linux.
+        "ac_cv_func_memcpy=yes",
+        "ac_cv_func_strerror=yes",
+        # tcc -ar rewrites an archive rather than appending to it, so libtool
+        # must not build one in batches. See tools/pkg/binutils.
+        "lt_cv_sys_max_cmd_len=8388608",
+    ],
+    configure_flags = [
+        "--build=x86_64-unknown-linux-gnu",
+        "--host=x86_64-unknown-linux-gnu",
+        "--with-native-system-header-dir=/include",
+        "--enable-checking=release",
+        "--disable-bootstrap",
+        "--disable-decimal-float",
+        "--disable-dependency-tracking",
+        "--disable-libatomic",
+        "--disable-libgomp",
+        "--disable-libitm",
+        "--disable-libmudflap",
+        "--disable-libquadmath",
+        "--disable-libsanitizer",
+        "--disable-libssp",
+        "--disable-lto",
+        "--disable-lto-plugin",
+        "--disable-multilib",
+        "--disable-nls",
+        "--disable-plugin",
+        "--disable-threads",
+        "--enable-languages=c",
+        "--enable-static",
+        "--disable-shared",
+        "--enable-threads=single",
+        "--disable-libstdcxx-pch",
+        "--disable-build-with-cxx",
+    ],
+    make_flags = ["MAKEINFO=true"],
+    tags = ["manual"],
+    install_target = "install",
+    tools = [
+        "//tools/pkg/bash/latest:bin",
+        "//tools/pkg/gnused/latest:bin",
+        "//tools/pkg/gawk:bin",
+        "//tools/pkg/binutils:bin",
+    ],
+)
+
+installed_program(
+    name = "gcc",
+    package = ":gcc_dist",
+    program = "gcc",
+    tags = ["manual"],
+)
+
+tool_dir(
+    name = "bin",
+    tools = {
+        "gcc": ":gcc",
+        "cc": ":gcc",
+    },
+    tags = ["manual"],
+)
+
+program_output_test(
+    name = "gcc_version_test",
+    program = ":gcc",
+    arguments = ["-dumpversion"],
+    expected_output = "4.6.4",
+    tags = ["manual"],
+)

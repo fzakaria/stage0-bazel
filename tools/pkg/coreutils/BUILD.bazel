@@ -152,11 +152,14 @@ tool_dir(
 # The programs later packages actually reach for. The rest are built and
 # installed; these are the ones given a target so a build can depend on them.
 PROGRAMS = [
+    "basename",
     "cat",
     "chmod",
     "cp",
+    "dirname",
     "echo",
     "expr",
+    "head",
     "install",
     "ln",
     "ls",
@@ -167,9 +170,11 @@ PROGRAMS = [
     "rm",
     "rmdir",
     "sort",
+    "tail",
     "tr",
     "true",
     "false",
+    "uname",
     "test",
     "touch",
     "uniq",

@@ -207,6 +207,45 @@ http_file(
     downloaded_file_path = "gawk-5.3.2.tar.gz",
 )
 
+# GCC 4.6.4, split as upstream ships it: the C compiler, the C++ front end,
+# and the three arbitrary-precision libraries it needs. 4.6 is the last
+# release that builds with a compiler as limited as tinycc, which is why both
+# reference bootstraps go through it.
+http_file(
+    name = "gcc-core-src",
+    sha256 = "e534a5cb05ab839d7cf7b2496fd5df42e76352926c1cf0d94de76184c26a739c",
+    url = "https://mirror.team-cymru.com/gnu/gcc/gcc-4.6.4/gcc-core-4.6.4.tar.gz",
+    downloaded_file_path = "gcc-core-4.6.4.tar.gz",
+)
+
+http_file(
+    name = "gcc-gpp-src",
+    sha256 = "690a5d4f664180640db28079e3461468192c484c37d6f671dde4b53a7f9918bb",
+    url = "https://mirror.team-cymru.com/gnu/gcc/gcc-4.6.4/gcc-g++-4.6.4.tar.gz",
+    downloaded_file_path = "gcc-g++-4.6.4.tar.gz",
+)
+
+http_file(
+    name = "gmp-src",
+    sha256 = "7be3ad1641b99b17f6a8be6a976f1f954e997c41e919ad7e0c418fe848c13c97",
+    url = "https://mirror.team-cymru.com/gnu/gmp/gmp-4.3.2.tar.gz",
+    downloaded_file_path = "gmp-4.3.2.tar.gz",
+)
+
+http_file(
+    name = "mpfr-src",
+    sha256 = "246d7e184048b1fc48d3696dd302c9774e24e921204221540745e5464022b637",
+    url = "https://mirror.team-cymru.com/gnu/mpfr/mpfr-2.4.2.tar.gz",
+    downloaded_file_path = "mpfr-2.4.2.tar.gz",
+)
+
+http_file(
+    name = "mpc-src",
+    sha256 = "617decc6ea09889fb08ede330917a00b16809b8db88c29c31bfbb49cbf88ecc3",
+    url = "https://mirror.team-cymru.com/gnu/mpc/mpc-1.0.3.tar.gz",
+    downloaded_file_path = "mpc-1.0.3.tar.gz",
+)
+
 # GNU binutils. The assembler and linker GCC needs; tinycc has its own of
 # both, but GCC will not use them.
 http_file(
