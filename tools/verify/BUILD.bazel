@@ -13,6 +13,8 @@ package(
 no_native_toolchain_audit(
     name = "no_native_toolchain",
     targets = [
+        "//tools/mes/tests:hello",
+        "//tools/mes/lib:libc",
         "//tools/mes:mes",
         "//tools/stage0/phase11:kaem",
         "//tools/stage0/phase15:M2-Planet",

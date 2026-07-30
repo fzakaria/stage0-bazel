@@ -1,0 +1,29 @@
+"""End-to-end checks that the mescc toolchain produces working programs."""
+
+load("//tools/stage0:mescc.bzl", "mescc_binary", "mescc_object")
+load("//tools/verify:run_test.bzl", "program_output_test")
+
+package(
+    default_visibility = ["//visibility:public"],
+)
+
+mescc_object(
+    name = "hello_o",
+    src = "hello.c",
+    hdrs = ["@mes-m2//:headers"],
+    toolchain = "//tools/mes:mescc",
+)
+
+mescc_binary(
+    name = "hello",
+    objects = [":hello_o"],
+    toolchain = "//tools/mes:mescc",
+)
+
+# The whole chain in one assertion: a C program compiled and linked by a
+# compiler that traces back to the hex0 seed, running and printing correctly.
+program_output_test(
+    name = "hello_test",
+    program = ":hello",
+    expected_output = "hello from mescc",
+)

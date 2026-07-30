@@ -3,12 +3,15 @@
 GNU Mes is a Scheme interpreter and C compiler for bootstrapping the GNU System.
 """
 
+load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
 load("@bazel_skylib//rules:write_file.bzl", "write_file")
 load("//tools/stage0:hex2_1.bzl", "hex2_binary")
 load("//tools/stage0:m1.bzl", "m1_expand")
 load("//tools/stage0:m2.bzl", "m2_compile")
 load("//tools/stage0:bloodelf.bzl", "blood_elf")
 load("//tools/stage0:mes.bzl", "mes_distribution", "mes_scheme_test")
+load("//tools/stage0:files.bzl", "relocate_files")
+load("//tools/stage0:mescc.bzl", "mescc_toolchain")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -17,13 +20,37 @@ package(
 # Upstream generates this header from ./configure. Reproducing the two lines
 # it actually contains keeps configure -- and the shell it needs -- out of the
 # bootstrap. MES_VERSION must match the archive named in MODULE.bazel.
+#
+# It lands under include/mes/ so the same directory can serve as a -I root for
+# mescc, which expects to find <mes/config.h> there.
 write_file(
     name = "config_h",
-    out = "config.h",
+    out = "include/mes/config.h",
     content = [
         "#undef SYSTEM_LIBC",
         "#define MES_VERSION \"0.27\"",
     ],
+)
+
+# mescc names an include directory by a file inside it; config.h sits one
+# level deeper, so this marker names the directory itself.
+write_file(
+    name = "includedir_marker",
+    out = "include/MESCC_INCLUDEDIR",
+    content = ["mescc include search directory"],
+)
+
+# Mes source includes <arch/syscall.h> and expects the build to have put the
+# headers for the chosen target there. Upstream's ./configure copies them; the
+# same selection is made here by naming the x86_64 directory directly.
+relocate_files(
+    name = "arch_headers",
+    srcs = [
+        "@mes-m2//:include/linux/x86_64/kernel-stat.h",
+        "@mes-m2//:include/linux/x86_64/signal.h",
+        "@mes-m2//:include/linux/x86_64/syscall.h",
+    ],
+    prefix = "include/arch",
 )
 
 
@@ -31,7 +58,7 @@ m2_compile(
     name = "mes.M1",
     srcs = [ 
     # do not sort
-    ":config.h",
+    ":include/mes/config.h",
     "@mes-m2//:include/mes/lib-mini.h",
     "@mes-m2//:include/mes/lib.h",
     "@mes-m2//:lib/linux/x86_64-mes-m2/crt1.c",
@@ -214,4 +241,79 @@ mes_scheme_test(
     name = "mes_boot_test",
     mes = ":mes",
     expression = "(display %version)(newline)(display (map (lambda (x) (* x x)) (list 1 2 3)))(newline)",
+)
+
+# mescc's driver is a configure template. Only the target description has to
+# be filled in: every other placeholder is guarded by a string-prefix? test
+# that treats an unsubstituted value as "not set", and the paths those would
+# supply are passed on the command line instead.
+expand_template(
+    name = "mescc_scm",
+    out = "mescc.scm",
+    template = "@mes-m2//:scripts/mescc.scm.in",
+    substitutions = {
+        "@mes_cpu@": "x86_64",
+        "@mes_kernel@": "linux",
+        "@VERSION@": "0.27",
+    },
+)
+
+mescc_toolchain(
+    name = "mescc",
+    mes = ":mes",
+    driver = ":mescc.scm",
+    nyacc = "@nyacc//:runtime_files",
+    assembler = "//tools/stage0/phase9:M1",
+    linker = "//tools/stage0/phase10:hex2",
+    debug_tool = "//tools/stage0/phase13:blood-elf",
+    catm = "//tools/stage0/phase2:catm",
+    includes = [
+        ":arch_headers",
+        ":include/mes/config.h",
+        "@mes-m2//:headers",
+    ],
+    include_dir_markers = [
+        # Ours first, so the generated config.h wins over anything upstream
+        # might ship under the same name.
+        ":include/MESCC_INCLUDEDIR",
+        "@mes-m2//:include/errno.h",
+        "@mes-m2//:include/linux/x86_64/syscall.h",
+    ],
+    libraries = [
+        "@mes-m2//:arch_support",
+        "//tools/mes/lib:crt1",
+        "//tools/mes/lib:libc",
+        "//tools/mes/lib:libmescc",
+    ],
+    library_dir_markers = [
+        # The libraries this repository builds, then the ELF fragments and M1
+        # macro definitions that ship with mes.
+        "//tools/mes/lib:MESCC_LIBDIR",
+        "@mes-m2//:lib/libtcc1.c",
+    ],
+)
+
+# A toolchain that can compile but not yet link, used to build the C library
+# itself. Without it, libc would have to exist before it could be built.
+mescc_toolchain(
+    name = "mescc_bootstrap",
+    mes = ":mes",
+    driver = ":mescc.scm",
+    nyacc = "@nyacc//:runtime_files",
+    assembler = "//tools/stage0/phase9:M1",
+    linker = "//tools/stage0/phase10:hex2",
+    debug_tool = "//tools/stage0/phase13:blood-elf",
+    catm = "//tools/stage0/phase2:catm",
+    includes = [
+        ":arch_headers",
+        ":include/mes/config.h",
+        "@mes-m2//:headers",
+    ],
+    include_dir_markers = [
+        ":include/MESCC_INCLUDEDIR",
+        "@mes-m2//:include/errno.h",
+        "@mes-m2//:include/linux/x86_64/syscall.h",
+    ],
+    libraries = ["@mes-m2//:arch_support"],
+    library_dir_markers = ["@mes-m2//:lib/libtcc1.c"],
 )

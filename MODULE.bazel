@@ -62,3 +62,13 @@ http_archive(
     url = "https://mirror.team-cymru.com/gnu/mes/mes-0.27.tar.gz",
     strip_prefix = "mes-0.27",
 )
+
+# The C99 parser mescc is written against. Mes ships only two nyacc compat
+# shims, not the parser itself, so mescc cannot run without this.
+http_archive(
+    name = "nyacc",
+    build_file = "//third_party:nyacc.BUILD",
+    sha256 = "f36e4fb7dd524dc3f4b354d3d5313f69e7ce5a6ae93711e8cf6d51eaa8d2b318",
+    url = "https://download-mirror.savannah.gnu.org/releases/nyacc/nyacc-1.00.2.tar.gz",
+    strip_prefix = "nyacc-1.00.2",
+)

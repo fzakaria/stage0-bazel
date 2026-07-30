@@ -1,0 +1,163 @@
+"""The mes C library, compiled by mescc.
+
+These are the source lists from upstream's build-aux/configure-lib.sh for
+mes_libc=mes, mes_kernel=linux, mes_cpu=x86_64 and compiler=mescc. The shape
+of the output directory matters: mescc looks for crt1.o and lib*.a under
+`<library dir>/x86_64-mes/`, which is where mescc_object and mescc_library
+put them.
+"""
+
+load("@bazel_skylib//rules:write_file.bzl", "write_file")
+load("//tools/stage0:mescc.bzl", "mescc_archive", "mescc_object")
+
+package(
+    default_visibility = ["//visibility:public"],
+)
+
+# mescc names a library search directory by a file inside it, and this
+# directory otherwise holds only generated subdirectories. The marker gives
+# the toolchain something to point at.
+write_file(
+    name = "libdir_marker",
+    out = "MESCC_LIBDIR",
+    content = ["mescc library search directory"],
+)
+
+# The C runtime startup object. Its name is fixed: mescc links `crt1.o` under
+# exactly that name unless -nostartfiles is given.
+mescc_object(
+    name = "crt1",
+    src = "@mes-m2//:lib/linux/x86_64-mes-mescc/crt1.c",
+    hdrs = ["@mes-m2//:headers"],
+    toolchain = "//tools/mes:mescc_bootstrap",
+)
+
+# libmescc holds the pieces every mescc-compiled program needs; mescc links
+# it by default alongside libc.
+mescc_archive(
+    name = "libmescc",
+    library_name = "mescc",
+    srcs = [
+        "@mes-m2//:lib/mes/globals.c",
+        "@mes-m2//:lib/linux/x86_64-mes-mescc/syscall-internal.c",
+    ],
+    hdrs = ["@mes-m2//:headers"],
+    toolchain = "//tools/mes:mescc_bootstrap",
+)
+
+# The C library proper.
+mescc_archive(
+    name = "libc",
+    library_name = "c",
+    srcs = [
+        "@mes-m2//:lib/mes/__init_io.c",
+        "@mes-m2//:lib/mes/eputs.c",
+        "@mes-m2//:lib/mes/oputs.c",
+        "@mes-m2//:lib/mes/globals.c",
+        "@mes-m2//:lib/stdlib/exit.c",
+        "@mes-m2//:lib/linux/x86_64-mes-mescc/_exit.c",
+        "@mes-m2//:lib/linux/x86_64-mes-mescc/_write.c",
+        "@mes-m2//:lib/stdlib/puts.c",
+        "@mes-m2//:lib/string/strlen.c",
+        "@mes-m2//:lib/ctype/isnumber.c",
+        "@mes-m2//:lib/mes/abtol.c",
+        "@mes-m2//:lib/mes/cast.c",
+        "@mes-m2//:lib/mes/eputc.c",
+        "@mes-m2//:lib/mes/fdgetc.c",
+        "@mes-m2//:lib/mes/fdputc.c",
+        "@mes-m2//:lib/mes/fdputs.c",
+        "@mes-m2//:lib/mes/fdungetc.c",
+        "@mes-m2//:lib/mes/itoa.c",
+        "@mes-m2//:lib/mes/ltoa.c",
+        "@mes-m2//:lib/mes/ltoab.c",
+        "@mes-m2//:lib/mes/mes_open.c",
+        "@mes-m2//:lib/mes/ntoab.c",
+        "@mes-m2//:lib/mes/oputc.c",
+        "@mes-m2//:lib/mes/ultoa.c",
+        "@mes-m2//:lib/mes/utoa.c",
+        "@mes-m2//:lib/stub/__raise.c",
+        "@mes-m2//:lib/ctype/isdigit.c",
+        "@mes-m2//:lib/ctype/isspace.c",
+        "@mes-m2//:lib/ctype/isxdigit.c",
+        "@mes-m2//:lib/mes/assert_msg.c",
+        "@mes-m2//:lib/posix/write.c",
+        "@mes-m2//:lib/stdlib/atoi.c",
+        "@mes-m2//:lib/linux/lseek.c",
+        "@mes-m2//:lib/dirent/__getdirentries.c",
+        "@mes-m2//:lib/dirent/closedir.c",
+        "@mes-m2//:lib/dirent/opendir.c",
+        "@mes-m2//:lib/mes/__assert_fail.c",
+        "@mes-m2//:lib/mes/__buffered_read.c",
+        "@mes-m2//:lib/mes/__mes_debug.c",
+        "@mes-m2//:lib/posix/execv.c",
+        "@mes-m2//:lib/posix/getcwd.c",
+        "@mes-m2//:lib/posix/getenv.c",
+        "@mes-m2//:lib/posix/isatty.c",
+        "@mes-m2//:lib/posix/open.c",
+        "@mes-m2//:lib/posix/buffered-read.c",
+        "@mes-m2//:lib/posix/setenv.c",
+        "@mes-m2//:lib/posix/wait.c",
+        "@mes-m2//:lib/stdio/fgetc.c",
+        "@mes-m2//:lib/stdio/fputc.c",
+        "@mes-m2//:lib/stdio/fputs.c",
+        "@mes-m2//:lib/stdio/getc.c",
+        "@mes-m2//:lib/stdio/getchar.c",
+        "@mes-m2//:lib/stdio/putc.c",
+        "@mes-m2//:lib/stdio/putchar.c",
+        "@mes-m2//:lib/stdio/ungetc.c",
+        "@mes-m2//:lib/stdlib/calloc.c",
+        "@mes-m2//:lib/stdlib/free.c",
+        "@mes-m2//:lib/stdlib/realloc.c",
+        "@mes-m2//:lib/string/memchr.c",
+        "@mes-m2//:lib/string/memcmp.c",
+        "@mes-m2//:lib/string/memcpy.c",
+        "@mes-m2//:lib/string/memmove.c",
+        "@mes-m2//:lib/string/memset.c",
+        "@mes-m2//:lib/string/strcmp.c",
+        "@mes-m2//:lib/string/strcpy.c",
+        "@mes-m2//:lib/string/strncmp.c",
+        "@mes-m2//:lib/posix/raise.c",
+        "@mes-m2//:lib/linux/access.c",
+        "@mes-m2//:lib/linux/brk.c",
+        "@mes-m2//:lib/linux/chdir.c",
+        "@mes-m2//:lib/linux/chmod.c",
+        "@mes-m2//:lib/linux/clock_gettime.c",
+        "@mes-m2//:lib/linux/close.c",
+        "@mes-m2//:lib/linux/dup.c",
+        "@mes-m2//:lib/linux/dup2.c",
+        "@mes-m2//:lib/linux/execve.c",
+        "@mes-m2//:lib/linux/fcntl.c",
+        "@mes-m2//:lib/linux/fork.c",
+        "@mes-m2//:lib/linux/fstat.c",
+        "@mes-m2//:lib/linux/fsync.c",
+        "@mes-m2//:lib/linux/_getcwd.c",
+        "@mes-m2//:lib/linux/getdents.c",
+        "@mes-m2//:lib/linux/gettimeofday.c",
+        "@mes-m2//:lib/linux/ioctl3.c",
+        "@mes-m2//:lib/linux/link.c",
+        "@mes-m2//:lib/linux/lstat.c",
+        "@mes-m2//:lib/linux/_open3.c",
+        "@mes-m2//:lib/linux/malloc.c",
+        "@mes-m2//:lib/linux/mkdir.c",
+        "@mes-m2//:lib/linux/nanosleep.c",
+        "@mes-m2//:lib/linux/pipe.c",
+        "@mes-m2//:lib/linux/_read.c",
+        "@mes-m2//:lib/linux/readdir.c",
+        "@mes-m2//:lib/linux/rename.c",
+        "@mes-m2//:lib/linux/rmdir.c",
+        "@mes-m2//:lib/linux/stat.c",
+        "@mes-m2//:lib/linux/symlink.c",
+        "@mes-m2//:lib/linux/time.c",
+        "@mes-m2//:lib/linux/umask.c",
+        "@mes-m2//:lib/linux/uname.c",
+        "@mes-m2//:lib/linux/unlink.c",
+        "@mes-m2//:lib/linux/utimensat.c",
+        "@mes-m2//:lib/linux/wait4.c",
+        "@mes-m2//:lib/linux/waitpid.c",
+        "@mes-m2//:lib/linux/x86_64-mes-mescc/syscall.c",
+        "@mes-m2//:lib/linux/getpid.c",
+        "@mes-m2//:lib/linux/kill.c",
+    ],
+    hdrs = ["@mes-m2//:headers"],
+    toolchain = "//tools/mes:mescc_bootstrap",
+)
