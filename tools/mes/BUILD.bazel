@@ -10,7 +10,8 @@ load("//tools/stage0:m1.bzl", "m1_expand")
 load("//tools/stage0:m2.bzl", "m2_compile")
 load("//tools/stage0:bloodelf.bzl", "blood_elf")
 load("//tools/stage0:mes.bzl", "mes_distribution", "mes_scheme_test")
-load("//tools/stage0:files.bzl", "relocate_files")
+load("//tools/mes:headers.bzl", "MES_HEADER_FIXES")
+load("//tools/stage0:files.bzl", "patched_tree", "relocate_files")
 load("//tools/stage0:mescc.bzl", "mescc_toolchain")
 
 package(
@@ -38,6 +39,29 @@ write_file(
     name = "includedir_marker",
     out = "include/MESCC_INCLUDEDIR",
     content = ["mescc include search directory"],
+)
+
+# mes-libc implements several functions its headers never declare, which on
+# x86-64 truncates their returned pointers. See headers.bzl.
+patched_tree(
+    name = "headers",
+    srcs = ["@mes-m2//:headers"],
+    prefix = "headers",
+    substitutions = MES_HEADER_FIXES,
+)
+
+write_file(
+    name = "headers_marker",
+    out = "headers/include/MES_INCLUDEDIR",
+    content = ["mes include search directory"],
+)
+
+filegroup(
+    name = "header_dir",
+    srcs = [
+        ":headers",
+        ":headers/include/MES_INCLUDEDIR",
+    ],
 )
 
 # Mes source includes <arch/syscall.h> and expects the build to have put the

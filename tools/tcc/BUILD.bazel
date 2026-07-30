@@ -116,7 +116,7 @@ mescc_object(
     main = "src/tcc.c",
     hdrs = [
         ":config_h",
-        "@mes-m2//:headers",
+        "//tools/mes:header_dir",
     ],
     defines = TCC_DEFINES,
     toolchain = "//tools/mes:mescc",
@@ -145,7 +145,7 @@ program_output_test(
 tcc_libraries(
     name = "tcc-mes_libs",
     tcc = ":tcc-mes",
-    mes_headers = "@mes-m2//:headers",
+    mes_headers = "//tools/mes:header_dir",
     libtcc_defines = ["TCC_TARGET_X86_64=1"],
 )
 
@@ -182,7 +182,7 @@ TCC_STAGES = [
         src_dir_marker = ":src/config.h",
         defines = defines,
         libtcc_defines = libtcc_defines + ["TCC_TARGET_X86_64=1"],
-        mes_headers = "@mes-m2//:headers",
+        mes_headers = "//tools/mes:header_dir",
     )
     for index, (stage, defines, libtcc_defines) in enumerate(TCC_STAGES)
 ]

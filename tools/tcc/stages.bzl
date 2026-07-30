@@ -154,7 +154,7 @@ def tcc_libraries(
         srcs = [
             tcc_src,
             "//tools/mes:arch_headers",
-            "@mes-m2//:headers",
+            "//tools/mes:header_dir",
         ],
         substitutions = substitutions,
         directory_substitutions = directory_substitutions,
@@ -211,7 +211,7 @@ def tcc_stage(
     """
     tcc_binary(
         name = name,
-        srcs = [src, "//tools/mes:arch_headers", "@mes-m2//:headers"],
+        srcs = [src, "//tools/mes:arch_headers", "//tools/mes:header_dir"],
         main = "src/tcc.c",
         defines = _COMMON_DEFINES + defines,
         include_dir_markers = [
@@ -221,7 +221,7 @@ def tcc_stage(
             # own include path; what gets baked into the compiler being built
             # is set separately by sysinclude_dirs.
             "//tools/mes:include/MESCC_INCLUDEDIR",
-            "@mes-m2//:include/errno.h",
+            "//tools/mes:headers/include/MES_INCLUDEDIR",
         ],
         # What the compiler being built will search when nobody passes -I.
         # tinycc's own headers first, for the same reason they come first

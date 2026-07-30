@@ -17,13 +17,13 @@ tcc_binary(
     srcs = [
         "hello.c",
         "//tools/mes:arch_headers",
-        "@mes-m2//:headers",
+        "//tools/mes:header_dir",
     ],
     main = "tests/hello.c",
     include_dir_markers = [
         "//tools/tcc:src/include/TCC_INCLUDEDIR",
         "//tools/mes:include/MESCC_INCLUDEDIR",
-        "@mes-m2//:include/errno.h",
+        "//tools/mes:headers/include/MES_INCLUDEDIR",
     ],
     libs = "//tools/tcc:tcc-mes_libs",
     tcc = "//tools/tcc:tcc-mes",
@@ -42,13 +42,13 @@ tcc_binary(
     srcs = [
         "features.c",
         "//tools/mes:arch_headers",
-        "@mes-m2//:headers",
+        "//tools/mes:header_dir",
     ],
     main = "tests/features.c",
     include_dir_markers = [
         "//tools/tcc:src/include/TCC_INCLUDEDIR",
         "//tools/mes:include/MESCC_INCLUDEDIR",
-        "@mes-m2//:include/errno.h",
+        "//tools/mes:headers/include/MES_INCLUDEDIR",
     ],
     libs = "//tools/tcc:tcc_libs",
     tcc = "//tools/tcc:tcc",

@@ -114,6 +114,9 @@ def tcc_package(
     compile_prefix = " ".join(
         [
             "tcc",
+            # Debug info costs nothing here and makes a crash in a
+            # bootstrapped program traceable to a line of upstream source.
+            "-g",
             "-B",
             "${tcc_libs}",
             "-I",
@@ -195,12 +198,12 @@ def tcc_package(
             "tcc_libs": tcc_libs,
             "tcc_include": tcc_include,
             "mes_arch_include": "//tools/mes:arch_include_dir",
-            "mes_include": "@mes-m2//:headers",
+            "mes_include": "//tools/mes:header_dir",
         },
         srcs = patch_labels + [
             tcc_src,
             "//tools/mes:arch_headers",
-            "@mes-m2//:headers",
+            "//tools/mes:header_dir",
         ] + srcs,
         tools = [
             name + "_tcc",

@@ -113,7 +113,7 @@ kaem_run(
     srcs = [
         "//tools/tcc:src",
         "//tools/mes:arch_headers",
-        "@mes-m2//:headers",
+        "//tools/mes:header_dir",
     ],
     substitutions = {
         "conftest": "@tinycc-current//:conftest.c",
@@ -123,7 +123,7 @@ kaem_run(
         "tcc_libs": "//tools/tcc:tcc_libs",
         "tcc_include": "//tools/tcc:src_include_dir",
         "mes_arch_include": "//tools/mes:arch_include_dir",
-        "mes_include": "@mes-m2//:headers",
+        "mes_include": "//tools/mes:header_dir",
     },
     tools = [
         ":bootstrap_tcc",
@@ -168,7 +168,7 @@ DEFINES = [
             ":tccdefs",
             "//tools/tcc:src",
             "//tools/mes:arch_headers",
-            "@mes-m2//:headers",
+            "//tools/mes:header_dir",
         ],
         main = "src/tcc.c",
         defines = DEFINES,
@@ -180,12 +180,12 @@ DEFINES = [
             ":src/config.h",
             compiler_headers,
             "//tools/mes:include/MESCC_INCLUDEDIR",
-            "@mes-m2//:include/errno.h",
+            "//tools/mes:headers/include/MES_INCLUDEDIR",
         ],
         # tccdefs_.h is included by name, so its directory has to be searched.
         sysinclude_dirs = [
             ":src_include_dir",
-            "@mes-m2//:headers",
+            "//tools/mes:header_dir",
         ],
         include_dirs = [":tccdefs"],
         libs = libs,
@@ -215,7 +215,7 @@ tcc_libraries(
     tcc = ":tcc-boot",
     prev_libs = "//tools/tcc:tcc_libs",
     libtcc_defines = ["TCC_TARGET_X86_64=1"],
-    mes_headers = "@mes-m2//:headers",
+    mes_headers = "//tools/mes:header_dir",
     tcc_include = ":src_include_dir",
     tcc_src = ":src",
     # Current tinycc handles variadic arguments itself, so va_list.c is gone;
@@ -231,7 +231,7 @@ tcc_libraries(
     tcc = ":tcc",
     prev_libs = ":tcc-boot_libs",
     libtcc_defines = ["TCC_TARGET_X86_64=1"],
-    mes_headers = "@mes-m2//:headers",
+    mes_headers = "//tools/mes:header_dir",
     tcc_include = ":src_include_dir",
     tcc_src = ":src",
     # Current tinycc handles variadic arguments itself, so va_list.c is gone;

@@ -109,14 +109,14 @@ kaem_run(
     srcs = PATCHES + MAKEFILES + [
         "//tools/tcc:src",
         "//tools/mes:arch_headers",
-        "@mes-m2//:headers",
+        "//tools/mes:header_dir",
     ],
     substitutions = {"tarball": "@bash-src//file"},
     directory_substitutions = {
         "tcc_libs": "//tools/tcc:tcc_libs",
         "tcc_include": "//tools/tcc:src_include_dir",
         "mes_arch_include": "//tools/mes:arch_include_dir",
-        "mes_include": "@mes-m2//:headers",
+        "mes_include": "//tools/mes:header_dir",
     },
     tools = [
         ":tcc",
