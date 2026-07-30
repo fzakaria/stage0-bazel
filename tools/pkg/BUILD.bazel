@@ -1,0 +1,12 @@
+"""Upstream source packages, built with the bootstrapped tinycc.
+
+Everything from here on is software that predates this project: GNU patch,
+make, the shell and text utilities, binutils, and finally GCC. Each is built
+the way nixpkgs' minimal-bootstrap builds it.
+"""
+
+package(
+    default_visibility = ["//visibility:public"],
+)
+
+exports_files(["defs.bzl"])

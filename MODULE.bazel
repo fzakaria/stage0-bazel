@@ -6,6 +6,11 @@ bazel_dep(name = "bazel_skylib", version = "1.7.1")
 
 http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
+# Upstream source tarballs stay compressed: the bootstrap unpacks them with
+# its own ungz and untar rather than with Bazel's extractor, so the tools
+# doing the unpacking are themselves part of the audited graph.
+http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
+
 http_archive(
     name = "hex0-seeds",
     sha256 = "cf38e87f847365d4ed1a1217a7505e007b0fc85933c01727d5d7462a58592d63",
@@ -91,4 +96,12 @@ http_archive(
     sha256 = "f36e4fb7dd524dc3f4b354d3d5313f69e7ce5a6ae93711e8cf6d51eaa8d2b318",
     url = "https://download-mirror.savannah.gnu.org/releases/nyacc/nyacc-1.00.2.tar.gz",
     strip_prefix = "nyacc-1.00.2",
+)
+# GNU patch. 2.6 and later use interfaces mes-libc does not provide, which is
+# why the bootstrap stops at 2.5.9; the version choice is nixpkgs'.
+http_file(
+    name = "gnupatch-src",
+    sha256 = "ecb5c6469d732bcf01d6ec1afe9e64f1668caba5bfdb103c28d7f537ba3cdb8a",
+    url = "https://mirror.team-cymru.com/gnu/patch/patch-2.5.9.tar.gz",
+    downloaded_file_path = "patch-2.5.9.tar.gz",
 )
