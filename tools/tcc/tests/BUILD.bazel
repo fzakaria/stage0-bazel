@@ -59,3 +59,28 @@ program_output_test(
     program = ":features",
     expected_output = "5 20 1234567890123 7",
 )
+
+# struct stat's layout has to match the kernel's, because opendir turns one of
+# its fields into an allocation size. See dirent.c.
+tcc_binary(
+    name = "dirent",
+    srcs = [
+        "dirent.c",
+        "//tools/mes:arch_headers",
+        "//tools/mes:header_dir",
+    ],
+    main = "tests/dirent.c",
+    include_dir_markers = [
+        "//tools/tcc:src/include/TCC_INCLUDEDIR",
+        "//tools/mes:include/MESCC_INCLUDEDIR",
+        "//tools/mes:headers/include/MES_INCLUDEDIR",
+    ],
+    libs = "//tools/tcc:tcc_libs",
+    tcc = "//tools/tcc:tcc",
+)
+
+program_output_test(
+    name = "dirent_test",
+    program = ":dirent",
+    expected_output = "blksize ok\nmtime ok\nopendir ok",
+)

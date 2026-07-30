@@ -10,7 +10,7 @@ load("//tools/stage0:m1.bzl", "m1_expand")
 load("//tools/stage0:m2.bzl", "m2_compile")
 load("//tools/stage0:bloodelf.bzl", "blood_elf")
 load("//tools/stage0:mes.bzl", "mes_distribution", "mes_scheme_test")
-load("//tools/mes:headers.bzl", "MES_HEADER_FIXES")
+load("//tools/mes:headers.bzl", "MES_ARCH_HEADER_FIXES", "MES_HEADER_FIXES")
 load("//tools/stage0:files.bzl", "patched_tree", "relocate_files")
 load("//tools/stage0:mescc.bzl", "mescc_toolchain")
 
@@ -67,6 +67,9 @@ filegroup(
 # Mes source includes <arch/syscall.h> and expects the build to have put the
 # headers for the chosen target there. Upstream's ./configure copies them; the
 # same selection is made here by naming the x86_64 directory directly.
+#
+# kernel-stat.h is corrected on the way through: its struct stat does not
+# match what the kernel writes. See headers.bzl.
 relocate_files(
     name = "arch_headers",
     srcs = [
@@ -75,6 +78,7 @@ relocate_files(
         "@mes-m2//:include/linux/x86_64/syscall.h",
     ],
     prefix = "include/arch",
+    substitutions = MES_ARCH_HEADER_FIXES,
 )
 
 # The directory the arch headers live under, as one target: the marker names

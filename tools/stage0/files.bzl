@@ -5,12 +5,44 @@ bootstrap graph is not allowed to touch. Bazel can create symlinks itself, so
 these rules do the same work as an internal action.
 """
 
+def _apply_substitutions(pairs, name):
+    """Turns a flat match/replacement list into a substitution dict.
+
+    Args:
+        pairs: Alternating match and replacement strings.
+        name: The file the list belongs to, for the error message.
+
+    Returns:
+        A dict suitable for `ctx.actions.expand_template`.
+    """
+    if len(pairs) % 2 != 0:
+        fail("substitutions for %s must alternate match and replacement" % name)
+    return {pairs[i]: pairs[i + 1] for i in range(0, len(pairs), 2)}
+
 def _relocate_impl(ctx):
+    # Substitutions are keyed by basename, which is what the files are called
+    # once relocated. An unmatched key is an error rather than a silent no-op.
+    remaining = dict(ctx.attr.substitutions)
+
     outputs = []
     for src in ctx.files.srcs:
         out = ctx.actions.declare_file(ctx.attr.prefix + "/" + src.basename)
-        ctx.actions.symlink(output = out, target_file = src)
         outputs.append(out)
+
+        pairs = ctx.attr.substitutions.get(src.basename)
+        if pairs == None:
+            ctx.actions.symlink(output = out, target_file = src)
+            continue
+
+        ctx.actions.expand_template(
+            template = src,
+            output = out,
+            substitutions = _apply_substitutions(pairs, src.basename),
+        )
+        remaining.pop(src.basename)
+
+    if remaining:
+        fail("no source matched these patch targets: %s" % sorted(remaining.keys()))
 
     return [DefaultInfo(files = depset(outputs))]
 
@@ -25,6 +57,12 @@ relocate_files = rule(
         "prefix": attr.string(
             mandatory = True,
             doc = "Package-relative directory the files appear in, keeping their basenames.",
+        ),
+        "substitutions": attr.string_list_dict(
+            doc = """Patches, keyed by basename.
+
+Each value is a flat list of alternating match and replacement strings, since
+Starlark attributes cannot hold a dict of dicts.""",
         ),
     },
     doc = """Exposes files under a different directory, by basename.
@@ -130,17 +168,13 @@ def _patched_tree_impl(ctx):
             ctx.actions.symlink(output = out, target_file = src)
             continue
 
-        if len(pairs) % 2 != 0:
-            fail("substitutions for %s must alternate match and replacement" % relative)
-        replacements = {pairs[i]: pairs[i + 1] for i in range(0, len(pairs), 2)}
-
         # expand_template performs literal string replacement inside Bazel
         # itself, which is how a patch gets applied here without `patch`, `sed`
         # or a shell.
         ctx.actions.expand_template(
             template = src,
             output = out,
-            substitutions = replacements,
+            substitutions = _apply_substitutions(pairs, relative),
         )
         remaining.pop(relative)
 
