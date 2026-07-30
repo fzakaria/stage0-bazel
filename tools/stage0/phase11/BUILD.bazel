@@ -1,5 +1,9 @@
-"""Phase 12 for Stage0: Build M2-Mesoplanet from M2-Planet 
+"""Phase 11 for Stage0: Build kaem from C sources
 
+kaem is a deliberately tiny shell. Nothing earlier in the bootstrap needs it,
+but everything after mes does: the build systems of tinycc, binutils and gcc
+are shell scripts, and running them on a host shell would hand the whole
+bootstrap back to the host.
 """
 
 load("//tools/stage0:hex2_1.bzl", "hex2_binary")
@@ -12,46 +16,32 @@ package(
 )
 
 m2_compile(
-    name = "M2-Mesoplanet-1.M1",
-    srcs = [ 
+    name = "kaem.M1",
+    srcs = [
         # do not sort
         "@M2libc//:sys/types.h",
         "@M2libc//:stddef.h",
-    ] + 
-    select(
-        {
-            "@bazel_tools//src/conditions:linux_x86_64": [
-                # do not sort
-                "@M2libc//:x86/linux/fcntl.c",
-            ],
-        },
-    ) + [
-        "@M2libc//:fcntl.c",
+        "@M2libc//:string.c",
         "@M2libc//:sys/utsname.h",
     ] + select(
         {
             "@bazel_tools//src/conditions:linux_x86_64": [
                 # do not sort
                 "@M2libc//:x86/linux/unistd.c",
-                "@M2libc//:x86/linux/sys/stat.c",
+                "@M2libc//:x86/linux/fcntl.c",
             ],
         },
     ) + [
         # do not sort
+        "@M2libc//:fcntl.c",
         "@M2libc//:stdlib.c",
         "@M2libc//:stdio.h",
         "@M2libc//:stdio.c",
-        "@M2libc//:string.c",
         "@M2libc//:bootstrappable.c",
-        "@M2-Mesoplanet//:cc.h",
-        "@M2-Mesoplanet//:cc_globals.c",
-        "@M2-Mesoplanet//:cc_env.c",
-        "@M2-Mesoplanet//:cc_reader.c",
-        "@M2-Mesoplanet//:cc_spawn.c",
-        "@M2-Mesoplanet//:cc_core.c",
-        "@M2-Mesoplanet//:cc_macro.c",
-        "@M2-Mesoplanet//:cc.c",
-
+        "@mescc-tools//:Kaem/kaem.h",
+        "@mescc-tools//:Kaem/variable.c",
+        "@mescc-tools//:Kaem/kaem_globals.c",
+        "@mescc-tools//:Kaem/kaem.c",
     ],
     architecture = select({
         "@bazel_tools//src/conditions:linux_x86_64": "x86",
@@ -60,8 +50,8 @@ m2_compile(
 )
 
 blood_elf(
-    name = "M2-Mesoplanet-1-footer.M1",
-    src = ":M2-Mesoplanet-1.M1",
+    name = "kaem-footer.M1",
+    src = ":kaem.M1",
     is_little_endian = select({
         "@bazel_tools//src/conditions:linux_x86_64": True,
     }),
@@ -69,7 +59,7 @@ blood_elf(
 )
 
 m1_expand(
-    name = "M2-Mesoplanet-1.hex2",
+    name = "kaem.hex2",
     srcs = select(
         {
             "@bazel_tools//src/conditions:linux_x86_64": [
@@ -80,8 +70,8 @@ m1_expand(
         },
     ) + [
         # do not sort
-        ":M2-Mesoplanet-1.M1",
-        ":M2-Mesoplanet-1-footer.M1",
+        ":kaem.M1",
+        ":kaem-footer.M1",
     ],
     architecture = select({
         "@bazel_tools//src/conditions:linux_x86_64": "x86",
@@ -89,11 +79,11 @@ m1_expand(
     is_little_endian = select({
         "@bazel_tools//src/conditions:linux_x86_64": True,
     }),
-    tool = "//tools/stage0/phase9:M1"
+    tool = "//tools/stage0/phase9:M1",
 )
 
 hex2_binary(
-    name = "M2-Mesoplanet",
+    name = "kaem",
     srcs = select(
         {
             "@bazel_tools//src/conditions:linux_x86_64": [
@@ -102,7 +92,7 @@ hex2_binary(
             ],
         },
     ) + [
-        ":M2-Mesoplanet-1.hex2",
+        ":kaem.hex2",
     ],
     base_address = "0x8048000",
     architecture = select({
@@ -111,5 +101,5 @@ hex2_binary(
     is_little_endian = select({
         "@bazel_tools//src/conditions:linux_x86_64": True,
     }),
-    tool = "//tools/stage0/phase8:hex2-1"
+    tool = "//tools/stage0/phase8:hex2-1",
 )

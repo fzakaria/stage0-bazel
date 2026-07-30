@@ -19,7 +19,7 @@ def _blood_elf_impl(ctx):
     ctx.actions.run(
         outputs = [out],
         inputs = [ctx.file.src],
-        executable = ctx.executable._bloodelf,
+        executable = ctx.executable.tool,
         arguments = [args],
         mnemonic = "BloodElf",
     )
@@ -46,12 +46,14 @@ blood_elf = rule(
             mandatory = False,
             doc = "Whether to expand in 64-bit mode.",
         ),
-        "_bloodelf": attr.label(
+        # Phases 7 through 13 predate the shipping blood-elf and must point
+        # this at the bootstrap blood-elf-0 from phase 6 instead.
+        "tool": attr.label(
             executable = True,
             cfg = "exec",
             doc = "Bloodelf tool to create M1 footer for debug",
-            default = "@//tools/stage0/phase13:blood-elf"
-        )
+            default = "@//tools/stage0/phase13:blood-elf",
+        ),
     },
     doc = """Compiles C files into a M1 program.""",
 )

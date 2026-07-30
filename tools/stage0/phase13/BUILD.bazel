@@ -5,6 +5,7 @@
 load("//tools/stage0:hex2_1.bzl", "hex2_binary")
 load("//tools/stage0:m1.bzl", "m1_expand")
 load("//tools/stage0:m2.bzl", "m2_compile")
+load("//tools/stage0:bloodelf.bzl", "blood_elf")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -46,6 +47,16 @@ m2_compile(
     architecture = select({
         "@bazel_tools//src/conditions:linux_x86_64": "x86",
     }),
+    is_debug = True,
+)
+
+blood_elf(
+    name = "blood-elf-1-footer.M1",
+    src = ":blood-elf-1.M1",
+    is_little_endian = select({
+        "@bazel_tools//src/conditions:linux_x86_64": True,
+    }),
+    tool = "//tools/stage0/phase6:blood-elf-0",
 )
 
 m1_expand(
@@ -59,7 +70,9 @@ m1_expand(
             ],
         },
     ) + [
+        # do not sort
         ":blood-elf-1.M1",
+        ":blood-elf-1-footer.M1",
     ],
     architecture = select({
         "@bazel_tools//src/conditions:linux_x86_64": "x86",
@@ -76,7 +89,7 @@ hex2_binary(
         {
             "@bazel_tools//src/conditions:linux_x86_64": [
                 # do not sort
-                "@M2libc//:x86/ELF-x86.hex2",
+                "@M2libc//:x86/ELF-x86-debug.hex2",
             ],
         },
     ) + [

@@ -7,4 +7,8 @@ exports_files([
     "hex2_linker.c",
     "hex2_word.c",
     "get_machine.c",
+    "Kaem/kaem.h",
+    "Kaem/kaem.c",
+    "Kaem/kaem_globals.c",
+    "Kaem/variable.c",
 ])

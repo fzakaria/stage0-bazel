@@ -7,6 +7,10 @@ load("//tools/stage0:catm.bzl", "cat_files")
 load("//tools/stage0:hex2.bzl", "hex2_binary")
 load("//tools/stage0:m0.bzl", "m0_expand")
 
+package(
+    default_visibility = ["//visibility:public"],
+)
+
 m2_compile(
     name = "blood-elf-0.M1",
     srcs = select(

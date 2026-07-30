@@ -5,6 +5,9 @@ exports_files([
     "x86/libc-core.M1",
     "x86/libc-full.M1",
     "x86/ELF-x86.hex2",
+    # Same ELF header, but with the section headers that let a debugger
+    # resolve the symbols blood-elf emits.
+    "x86/ELF-x86-debug.hex2",
     "x86/linux/unistd.c",
     "x86/linux/fcntl.c",
     "x86/linux/sys/stat.c",

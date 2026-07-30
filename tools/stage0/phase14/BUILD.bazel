@@ -79,7 +79,7 @@ hex2_binary(
         {
             "@bazel_tools//src/conditions:linux_x86_64": [
                 # do not sort
-                "@M2libc//:x86/ELF-x86.hex2",
+                "@M2libc//:x86/ELF-x86-debug.hex2",
             ],
         },
     ) + [
