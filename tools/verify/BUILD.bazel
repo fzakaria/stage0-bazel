@@ -1,0 +1,23 @@
+"""Audits of the bootstrap graph.
+
+These targets exist to be built in CI. They do not contribute anything to the
+toolchain; they assert properties of it.
+"""
+
+load("//tools/verify:no_native_toolchain.bzl", "no_native_toolchain_audit")
+
+package(
+    default_visibility = ["//visibility:public"],
+)
+
+no_native_toolchain_audit(
+    name = "no_native_toolchain",
+    targets = [
+        "//tools/stage0/phase15:M2-Planet",
+        "//tools/stage0/phase13:blood-elf",
+        "//tools/stage0/phase12:M2-Mesoplanet",
+        "//tools/stage0/phase14:get_machine",
+        "//tools/stage0/phase10:hex2",
+        "//tools/stage0/phase9:M1",
+    ],
+)
