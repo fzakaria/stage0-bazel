@@ -16,6 +16,16 @@ run decides its own file names. Bazel models that as a TreeArtifact.
 
 load("//tools/stage0:files.bzl", "ToolDirInfo")
 
+# Prefixes that make an execroot-relative path work from a subdirectory. Three
+# levels covers every recursive make in the bootstrap; a prefix that resolves
+# to nothing is simply ignored by the tools that read these paths.
+RELATIVE_PREFIXES = [
+    "",
+    "../",
+    "../../",
+    "../../../",
+]
+
 def _directory_root(target):
     """Returns the directory a target names.
 
@@ -49,10 +59,21 @@ def _kaem_run_impl(ctx):
     # its inputs by name and the rule resolves those names to exec paths. That
     # keeps output paths, which are not knowable when the script is written,
     # out of the script itself.
+    # Every tool directory appears once per directory level. Bazel cannot name
+    # the execroot absolutely at analysis time, so PATH has to be relative --
+    # and a build that descends, as a recursive make does, would otherwise
+    # lose every tool it has. A relative PATH entry that does not resolve is
+    # skipped, so the extra entries cost nothing at the top level.
+    #
+    # Earlier directories win, so a stage's own compiler shadows any tool of
+    # the same name from the shared utility set.
+    search_path = []
+    for d in tool_dirs:
+        for prefix in RELATIVE_PREFIXES:
+            search_path.append(prefix + d.path)
+
     env = {
-        # Earlier directories win, so a stage's own compiler shadows any
-        # tool of the same name from the shared utility set.
-        "PATH": ":".join([d.path for d in tool_dirs]),
+        "PATH": ":".join(search_path),
         "out": out.path,
     }
     for name, target in ctx.attr.substitutions.items():

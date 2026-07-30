@@ -134,3 +134,12 @@ http_file(
     url = "https://mirror.team-cymru.com/gnu/bash/bash-2.05b.tar.gz",
     downloaded_file_path = "bash-2.05b.tar.gz",
 )
+
+# GNU sed 4.0.9, the version live-bootstrap and nixpkgs bootstrap through.
+# Later releases depend on gnulib modules that mes-libc cannot satisfy.
+http_file(
+    name = "gnused-src",
+    sha256 = "c365874794187f8444e5d22998cd5888ffa47f36def4b77517a808dec27c0600",
+    url = "https://mirror.team-cymru.com/gnu/sed/sed-4.0.9.tar.gz",
+    downloaded_file_path = "sed-4.0.9.tar.gz",
+)

@@ -12,11 +12,16 @@ def _program_output_test_impl(ctx):
     # stderr is folded into stdout: freestanding programs from this chain are
     # as likely to report on one as the other, and tcc prints its version
     # banner to stderr.
+    # A filter reads its input rather than taking it as an argument, so the
+    # wrapper has to be able to supply one. Programs that ignore stdin are
+    # unaffected by the empty default.
+    stdin = ctx.attr.stdin
+
     ctx.actions.write(
         output = ctx.outputs.executable,
         content = """#!/bin/sh
 RUNFILES="${{TEST_SRCDIR:-$0.runfiles}}"
-actual=$("$RUNFILES/{workspace}/{program}" {args} 2>&1)
+actual=$(printf '%s' '{stdin}' | "$RUNFILES/{workspace}/{program}" {args} 2>&1)
 status=$?
 if [ "$status" != "{exit_code}" ]; then
     echo "expected exit {exit_code}, got $status" >&2
@@ -35,6 +40,7 @@ fi
             args = " ".join(ctx.attr.arguments),
             exit_code = ctx.attr.expected_exit_code,
             expected = ctx.attr.expected_output,
+            stdin = stdin,
         ),
         is_executable = True,
     )
@@ -64,6 +70,12 @@ glibc build would report zero, so this is not always 0.""",
         "expected_output": attr.string(
             mandatory = True,
             doc = "Exact stdout the program must produce, without a trailing newline.",
+        ),
+        "stdin": attr.string(
+            doc = """Input to feed the program on stdin.
+
+A filter such as sed is only meaningfully exercised by giving it something to
+read, which an argument list cannot do.""",
         ),
     },
     doc = "Runs a program and fails unless it exits zero and prints the expected output.",

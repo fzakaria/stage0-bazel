@@ -12,23 +12,12 @@ so that no file outside the audited graph enters the build.
 make runs recipes without a shell when they contain no metacharacters, which
 is what makes it usable before a shell exists.
 
-NOT WORKING YET, and tagged manual so it stays out of //... . make segfaults
-part-way through, and non-deterministically: the same makefile sometimes
-builds and sometimes does not, which points at a heap bug rather than at
-anything in bash.
-
-The likely cause is that this is being built with the wrong tinycc. nixpkgs
-builds every package with `tinycc-mes` -- a sixth stage, compiled from the
-current tinycc at repo.or.cz rather than from janneke's bootstrappable fork,
-using the compiler at the end of the chain here. That stage carries a large
-number of fixes the bootstrappable fork does not have. Adding it is the next
-step; see the roadmap in README.md.
 """
 
 load("@bazel_skylib//rules:write_file.bzl", "write_file")
 load("//tools/pkg:defs.bzl", "installed_program")
 load("//tools/stage0:files.bzl", "tool_dir")
-load("//tools/stage0:kaem.bzl", "kaem_run")
+load("//tools/stage0:kaem.bzl", "RELATIVE_PREFIXES", "kaem_run")
 load("//tools/verify:run_test.bzl", "program_output_test")
 
 package(
@@ -54,16 +43,31 @@ MAKEFILES = [
     "mk/builtins.mk",
 ]
 
-# The compiler as the makefiles invoke it. tinycc knows where its own headers
-# are, but the directories still have to be named so they are staged.
+# The compiler as the makefiles invoke it. Every path appears once per
+# directory level, because make descends into the source tree and these are
+# relative to the execroot; the same reasoning as for PATH in kaem.bzl. A -I
+# directory that does not exist is ignored.
+#
 # The quotes matter: kaem splits on whitespace, and make has to receive the
 # whole compiler command line as a single CC= argument.
-_CC = "".join([
-    "CC=\"tcc -B ${tcc_libs}",
-    " -I ${tcc_include}",
-    " -I ${mes_arch_include}",
-    " -I ${mes_include}\"",
-])
+_DIRECTORIES = [
+    "${tcc_include}",
+    "${mes_arch_include}",
+    "${mes_include}",
+]
+
+_CC = " ".join(
+    ["CC=\"tcc"] +
+    # tcc keeps only the last -B, unlike -I which it accumulates. Every make
+    # here runs one level down, in the unpacked tree, and only the link step
+    # needs the library directory at all.
+    ["-B ../${tcc_libs}"] +
+    [
+        "-I " + prefix + d
+        for prefix in RELATIVE_PREFIXES
+        for d in _DIRECTORIES
+    ],
+) + "\""
 
 write_file(
     name = "build_script",
@@ -105,7 +109,6 @@ write_file(
 kaem_run(
     name = "bash",
     script = "bash.kaem",
-    tags = ["manual"],
     srcs = PATCHES + MAKEFILES + [
         "//tools/tcc:src",
         "//tools/mes:arch_headers",
@@ -135,7 +138,6 @@ installed_program(
     name = "bash_bin",
     package = ":bash",
     program = "bash",
-    tags = ["manual"],
 )
 
 # Later packages call the shell as `sh` as well as `bash`; upstream installs a
@@ -146,12 +148,10 @@ tool_dir(
         "bash": ":bash_bin",
         "sh": ":bash_bin",
     },
-    tags = ["manual"],
 )
 
 program_output_test(
     name = "bash_test",
-    tags = ["manual"],
     program = ":bash_bin",
     arguments = ["-c", "'echo shell works'"],
     expected_output = "shell works",

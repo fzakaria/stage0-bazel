@@ -1,0 +1,87 @@
+"""GNU sed 4.0.9.
+
+The first of the text utilities, and the one everything after it needs: every
+./configure script in the chain runs sed before it runs anything else.
+
+live-bootstrap builds this with a hand-written makefile rather than upstream's
+./configure, and nixpkgs fetches that makefile. The makefile is small enough
+to state directly -- an explicit source list and a -D set -- so it is
+transcribed here instead, which keeps `make` out of a step that does not need
+it and keeps the flags visible next to the sources they apply to.
+
+The source list is live-bootstrap's sysa/sed-4.0.9/mk/main.mk with LIBC=mes,
+which selects getline.c in place of alloca.c.
+"""
+
+load("//tools/pkg:defs.bzl", "installed_program", "tcc_package")
+load("//tools/stage0:files.bzl", "tool_dir")
+load("//tools/verify:run_test.bzl", "program_output_test")
+
+package(
+    default_visibility = ["//visibility:public"],
+)
+
+PREFIX = "sed-4.0.9"
+
+tcc_package(
+    name = "gnused",
+    tarball = "@gnused-src//file",
+    prefix = PREFIX,
+    binary = "sed",
+    configure = [
+        # sed includes "config.h" unconditionally; every value ./configure
+        # would put in it is passed as a -D flag below.
+        "catm %s/config.h" % PREFIX,
+        # The regex sources include <regex.h> and upstream's build generates
+        # it by copying. There is no sed yet to do the substitution its
+        # ./configure would, and none is needed: the file is used as is.
+        "cp %s/lib/regex_.h %s/lib/regex.h" % (PREFIX, PREFIX),
+    ],
+    cflags = [
+        "-I " + PREFIX,
+        "-I %s/lib" % PREFIX,
+        "-DENABLE_NLS=0",
+        "-DHAVE_FCNTL_H",
+        "-DHAVE_ALLOCA_H",
+        "-DSED_FEATURE_VERSION=\\\"4.0\\\"",
+        "-DVERSION=\\\"4.0.9\\\"",
+        "-DPACKAGE=\\\"sed\\\"",
+    ],
+    sources = [
+        # LIBC=mes takes getline rather than alloca.
+        "lib/getline.c",
+        "lib/getopt1.c",
+        "lib/getopt.c",
+        "lib/utils.c",
+        "lib/regex.c",
+        "lib/obstack.c",
+        "lib/strverscmp.c",
+        "lib/mkstemp.c",
+        "sed/compile.c",
+        "sed/execute.c",
+        "sed/regexp.c",
+        "sed/fmt.c",
+        "sed/sed.c",
+    ],
+)
+
+installed_program(
+    name = "sed",
+    package = ":gnused",
+    program = "sed",
+)
+
+tool_dir(
+    name = "bin",
+    tools = {"sed": ":sed"},
+)
+
+# Substitution is the whole point of the program, so the check exercises it
+# rather than only asking for a version string.
+program_output_test(
+    name = "gnused_substitute_test",
+    program = ":sed",
+    arguments = ["-e", "'s/before/after/'"],
+    stdin = "a line that says before",
+    expected_output = "a line that says after",
+)
