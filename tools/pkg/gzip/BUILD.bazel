@@ -1,0 +1,58 @@
+"""gzip 1.2.4.
+
+The first package in the chain built the way its authors meant it to be: its
+own ./configure, run by the bash this repository bootstrapped, then make.
+Everything before this had its source list transcribed by hand because no
+shell existed to run a configure script.
+
+1.2.4 rather than anything current for the usual reason -- later releases
+depend on gnulib modules mes-libc cannot satisfy -- and because musl's build
+needs a gzip, which is what this is for.
+"""
+
+load("//tools/pkg:configure.bzl", "configure_package")
+load("//tools/pkg:defs.bzl", "installed_program")
+load("//tools/stage0:files.bzl", "tool_dir")
+load("//tools/verify:run_test.bzl", "program_output_test")
+
+package(
+    default_visibility = ["//visibility:public"],
+)
+
+# Named for the installed tree rather than the program, so that the program
+# target below can be called `gzip`. gzip prints argv[0] in its own version
+# banner, and a binary called gzip_bin says so.
+configure_package(
+    name = "gzip_dist",
+    tarball = "@gzip-src//file",
+    prefix = "gzip-1.2.4",
+    programs = ["gzip"],
+    # gzip defines strlwr unconditionally, and mes-libc both declares and
+    # provides one, so the two collide at link time. Renaming gzip's through
+    # the preprocessor moves its definition and its one call site together
+    # and leaves the library's alone.
+    cc_flags = ["-Dstrlwr=gzip_strlwr"],
+)
+
+installed_program(
+    name = "gzip",
+    package = ":gzip_dist",
+    program = "gzip",
+)
+
+tool_dir(
+    name = "bin",
+    tools = {"gzip": ":gzip"},
+)
+
+# The banner reports the options ./configure settled on, so this checks that
+# configure ran and reached the right conclusions, not just that a binary
+# exists. The last line ends in a space, which is gzip's own formatting.
+program_output_test(
+    name = "gzip_version_test",
+    program = ":gzip",
+    arguments = ["--version"],
+    expected_output = """gzip 1.2.4 (18 Aug 93)
+Compilation options:
+DIRENT  STDC_HEADERS HAVE_UNISTD_H """,
+)

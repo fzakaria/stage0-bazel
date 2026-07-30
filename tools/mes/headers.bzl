@@ -21,7 +21,17 @@ MES_HEADER_FIXES = {
         """char *strchr (char const *s, int c);
 char *strdup (char const *s);
 char *strncat (char *dest, char const *src, size_t n);
-char *strpbrk (char const *s, char const *accept);""",
+char *strpbrk (char const *s, char const *accept);
+size_t strspn (char const *s, char const *accept);
+size_t strcspn (char const *s, char const *reject);""",
+    ],
+    # ctime is a stub in mes-libc, but an undeclared stub is worse than a
+    # declared one: C89 gives it a return type of int and the char * it hands
+    # back loses its top half.
+    "include/time.h": [
+        "struct tm *localtime (time_t const *timep);",
+        """struct tm *localtime (time_t const *timep);
+char *ctime (time_t const *timep);""",
     ],
     "include/stdio.h": [
         "FILE *fopen (char const *file_name, char const *mode);",

@@ -252,7 +252,9 @@ LIBC_SOURCES = [
     "@mes-m2//:lib/stub/putenv.c",
     "@mes-m2//:lib/stub/realpath.c",
     "@mes-m2//:lib/stub/sigemptyset.c",
-    "@mes-m2//:lib/x86_64-mes-gcc/setjmp.c",
+    # setjmp is ours. Upstream's x86-64 longjmp restores %rbp and %rsp from
+    # the wrong saved words and never sets a return value; see setjmp.c.
+    "setjmp.c",
     "@mes-m2//:lib/ctype/isalnum.c",
     "@mes-m2//:lib/ctype/isalpha.c",
     "@mes-m2//:lib/ctype/isascii.c",

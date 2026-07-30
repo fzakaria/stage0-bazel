@@ -84,3 +84,28 @@ program_output_test(
     program = ":dirent",
     expected_output = "blksize ok\nmtime ok\nopendir ok",
 )
+
+# tinycc reports every compile error by longjmp-ing, so this is what decides
+# whether the compiler survives a failed ./configure check. See setjmp.c.
+tcc_binary(
+    name = "setjmp",
+    srcs = [
+        "setjmp.c",
+        "//tools/mes:arch_headers",
+        "//tools/mes:header_dir",
+    ],
+    main = "tests/setjmp.c",
+    include_dir_markers = [
+        "//tools/tcc:src/include/TCC_INCLUDEDIR",
+        "//tools/mes:include/MESCC_INCLUDEDIR",
+        "//tools/mes:headers/include/MES_INCLUDEDIR",
+    ],
+    libs = "//tools/tcc:tcc_libs",
+    tcc = "//tools/tcc:tcc",
+)
+
+program_output_test(
+    name = "setjmp_test",
+    program = ":setjmp",
+    expected_output = "value ok\nframe ok",
+)

@@ -160,3 +160,12 @@ http_file(
     url = "https://mirror.team-cymru.com/gnu/coreutils/coreutils-5.0.tar.gz",
     downloaded_file_path = "coreutils-5.0.tar.gz",
 )
+
+# gzip 1.2.4. The first package in the chain built by running its own
+# ./configure rather than by a transcribed source list.
+http_file(
+    name = "gzip-src",
+    sha256 = "1ca41818a23c9c59ef1d5e1d00c0d5eaa2285d931c0fb059637d7c0cc02ad967",
+    url = "https://mirror.team-cymru.com/gnu/gzip/gzip-1.2.4.tar.gz",
+    downloaded_file_path = "gzip-1.2.4.tar.gz",
+)
