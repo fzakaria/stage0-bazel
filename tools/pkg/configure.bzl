@@ -74,8 +74,9 @@ def _driver_lines(prefix, configure_flags, make_flags, build_targets, install_ta
         prefix: The directory the tarball unpacks into.
         configure_flags: Flags appended to ./configure.
         make_flags: Flags passed to the build and install runs of make.
-        build_targets: Targets for the build run of make; empty means the
-            makefile's default.
+        build_targets: One string of make targets per build run, so that a
+            package needing staged builds can have them. Empty means a single
+            run of the makefile's default target.
         install_target: The make target that installs, usually "install".
         install_commands: Shell lines that install the build products, used
             instead of running make when the install rules need tools that do
@@ -118,6 +119,26 @@ def _driver_lines(prefix, configure_flags, make_flags, build_targets, install_ta
         "# \"could not make ./config.status\" and stops.",
         "export TMPDIR=\"$root/tmp\"",
         "mkdir -p \"$TMPDIR\"",
+        "",
+        "# Make PATH absolute. The action supplies it relative to the",
+        "# execroot, with a ../-prefixed copy of each entry so that a build",
+        "# one directory down still resolves. That breaks down here: a",
+        "# configure script descends into subdirectories to configure them,",
+        "# and each depth would need a different number of ../ segments.",
+        "# Anchoring every entry to the execroot makes the depth irrelevant.",
+        "absolute_path=\"\"",
+        "saved_ifs=\"$IFS\"",
+        "IFS=:",
+        "for entry in $PATH; do",
+        "  while [ \"${entry#../}\" != \"$entry\" ]; do entry=\"${entry#../}\"; done",
+        "  case \"$entry\" in",
+        "    /*) ;;",
+        "    *) entry=\"$root/$entry\" ;;",
+        "  esac",
+        "  absolute_path=\"$absolute_path${absolute_path:+:}$entry\"",
+        "done",
+        "IFS=\"$saved_ifs\"",
+        "export PATH=\"$absolute_path\"",
         "",
         "# tinycc knows where its own headers live only because those paths",
         "# were baked in when it was built; they still have to be named.",
@@ -206,9 +227,17 @@ def _driver_lines(prefix, configure_flags, make_flags, build_targets, install_ta
         "",
         "# Build. SHELL is passed explicitly because make ignores it from the",
         "# environment by design.",
-        " ".join(["make", "SHELL=\"$bash_path\""] + make_flags + build_targets),
-        "",
     ]
+
+    # Each entry is one make run. Some packages have to be built in stages --
+    # binutils links its libraries into the tools, and the tools do not
+    # resolve unless the libraries are finished first.
+    for targets in (build_targets or [""]):
+        lines.append(
+            " ".join(["make", "SHELL=\"$bash_path\""] + make_flags +
+                     ([targets] if targets else [])),
+        )
+    lines.append("")
 
     # A package whose install rules need tools this bootstrap does not have
     # yet -- makeinfo is the usual one -- says what to copy instead.
@@ -256,8 +285,9 @@ def configure_package(
         prefix: The directory the archive unpacks into.
         configure_flags: Flags appended to ./configure.
         make_flags: Flags passed to make, for both the build and the install.
-        build_targets: Targets for the build run of make; empty means the
-            makefile's default target.
+        build_targets: One string of make targets per build run, so that a
+            package needing staged builds can have them. Empty means a single
+            run of the makefile's default target.
         install_target: The make target that installs.
         install_commands: Shell lines that install the build products, used
             instead of running make when the install rules need tools that do

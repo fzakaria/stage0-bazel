@@ -1,19 +1,14 @@
-"""bash 5.3, built by bash 2.05b.
+"""bash 5.3, built by bash 2.05b. NOT COMPLETE YET -- it does not link.
 
 2.05b is from 2002 and autoconf is now 2.72. The shell it emits is beyond the
-older one in ways that only show up inside `eval`:
+older one in ways that only show up inside `eval`, so every configure past
+this point needs a current shell.
 
-    ./configure: eval: line 1: unexpected EOF while looking for matching `''
-
-so every configure past this point needs a current shell. 2.05b's job was to
-get from kaem to here, and this is the last thing it builds.
-
-It needs the sed from tools/pkg/gnused/latest: config.status is assembled by
-one sed piped into another, and sed 4.0.9 cannot run N when its input is
-stdin.
-
-BLOCKED: needs a working sed 4.2; see tools/pkg/gnused/latest. Tagged
-manual until then.
+configure now runs to completion and the whole tree compiles. The link fails
+with symbols from builtins/libbuiltins.a undefined -- internal_getopt,
+reset_internal_getopt, lcurrent. tcc resolves archive members in either order
+when tested directly, so this is about how that archive is built or reached,
+not about tcc's archive support.
 """
 
 load("//tools/pkg:configure.bzl", "DECOMPRESS_GNU", "LIBC_HEADERS_TOOLCHAIN", "configure_package")
@@ -57,7 +52,10 @@ configure_package(
     ],
     # A sed that gets autoconf's config.status substitution script right has
     # to come ahead of the bootstrap one; see tools/pkg/gnused/latest.
-    tools = ["//tools/pkg/gnused/latest:bin"],
+    tools = [
+        "//tools/pkg/gnused/latest:bin",
+        "//tools/pkg/gawk:bin",
+    ],
     tags = ["manual"],
 )
 

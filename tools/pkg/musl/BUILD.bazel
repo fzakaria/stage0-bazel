@@ -48,6 +48,14 @@ configure_package(
         # the call should have been anyway. sigsetjmp is the only x86-64
         # source that uses it, and it has no C equivalent to fall back to.
         "sed -i -e s/setjmp@PLT/setjmp/ src/signal/x86_64/sigsetjmp.s",
+        # memset, memcpy and memmove are hand-written x86-64 assembly here,
+        # and tinycc's assembler gets memset wrong: past the first few bytes
+        # it writes nothing. That is invisible until something depends on a
+        # large fill -- gnulib builds a regex fastmap with
+        # memset(fastmap, 1, 256), so `.` stopped matching any character
+        # above the first few and every `.*` collapsed to the empty match.
+        # The portable C versions in src/string are correct.
+        "rm -rf src/string/x86_64",
         # untar does not preserve the executable bit, and the install rules
         # run this script by path rather than through a shell.
         "chmod +x tools/install.sh",

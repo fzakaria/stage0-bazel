@@ -1,7 +1,4 @@
-"""GNU sed 4.2. STILL NOT USABLE -- two bugs found, one fixed.
-
-Both seds get something wrong that the other gets right, which is why this
-package exists at all.
+"""GNU sed 4.2, built by GNU sed 4.0.9.
 
 sed 4.0.9 cannot run the `N` command when its input is stdin. Given a script
 that joins pairs of lines it emits the first and stops:
@@ -9,32 +6,14 @@ that joins pairs of lines it emits the first and stops:
     $ sed -f join.sed < pairs.txt
     k1=
 
-Reading the same file by name works. autoconf pipes into sed constantly --
-config.status is assembled by one sed piped into another -- so this quietly
-truncated generated makefiles, and surfaced much later as an awk parse error
-on the half-written result. sed 4.2 does this correctly.
+The same file passed by name works. autoconf assembles config.status by
+piping one sed into another, so this truncated every generated makefile and
+surfaced much later as an awk parse error on the half-written result. That is
+the whole reason this package exists.
 
-sed 4.2's own fault is in matching. gnulib's regex has a separate multibyte
-matcher, switched on by RE_ENABLE_I18N, and tinycc miscompiles it: `.*` came
-back empty for every input. Turning that path off (the two ac_cv_func
-settings below) fixes the multibyte matcher's case, and uncovers a second,
-narrower one underneath:
-
-    $ echo abcdef | sed 's/.*/[&]/'      # correct
-    [abcdef]
-    $ echo ABC | sed 's/.*/[&]/'         # wrong
-    []ABC
-    $ echo ABC | sed 's/.*C$/X/'         # wrong: .* matched nothing
-    ABX
-
-`.` matches lowercase and not uppercase. That points at the bitset gnulib
-builds for a character class -- bitset_set and bitset_contain are shifts of a
-64-bit word by a bit index -- rather than at anything sed does itself. sed
-4.0.9's older regex, compiled by the same tinycc, gets all of these right, so
-this is specific to the newer engine.
-
-Until that is understood, every target here is tagged manual. The tests below
-record exactly what works and what does not.
+4.2 was itself wrong until musl's memset was fixed -- `.` matched only the
+first few character codes, because gnulib builds its regex fastmap with
+memset(fastmap, 1, 256). See tools/pkg/musl.
 """
 
 load("//tools/pkg:configure.bzl", "LIBC_HEADERS_TOOLCHAIN", "configure_package")
@@ -62,16 +41,8 @@ configure_package(
         "AR=\"tcc -ar\"",
         "RANLIB=true",
         "LD=tcc",
-        # Keep gnulib's regex on its single-byte path. RE_ENABLE_I18N turns
-        # on a separate multibyte matcher, and that is the half tinycc gets
-        # wrong here; sed 4.0.9, whose regex works, was built where none of
-        # this existed. sed itself still needs wchar.h, so the switch is made
-        # on the regex engine's own condition rather than by hiding headers.
-        "ac_cv_func_iswctype=no",
-        "ac_cv_func_wcscoll=no",
     ],
     make_flags = ["AR=\"tcc -ar\""],
-    tags = ["manual"],
     tools = ["//tools/pkg/gawk:bin"],
 )
 
@@ -79,13 +50,11 @@ installed_program(
     name = "sed",
     package = ":gnused_dist",
     program = "sed",
-    tags = ["manual"],
 )
 
 tool_dir(
     name = "bin",
     tools = {"sed": ":sed"},
-    tags = ["manual"],
 )
 
 program_output_test(
@@ -94,20 +63,19 @@ program_output_test(
     arguments = ["-e", "'s/before/after/'"],
     stdin = "a line that says before",
     expected_output = "a line that says after",
-    tags = ["manual"],
 )
 
 # The two things this build had to get right: a whole-line match, and the
 # N command reading from stdin. Both are what autoconf's config.status
 # pipeline depends on.
-# Lowercase works; the uppercase form below does not, and is the open bug.
+# A whole-line match over uppercase input: the shape that failed while
+# musl's memset was truncating the regex fastmap.
 program_output_test(
     name = "gnused_whole_line_match_test",
     program = ":sed",
     arguments = ["'s/.*/[&]/'"],
-    stdin = "abcdef",
-    expected_output = "[abcdef]",
-    tags = ["manual"],
+    stdin = "ABCdef",
+    expected_output = "[ABCdef]",
 )
 
 # N reading from stdin, which 4.0.9 could not do. The script is autoconf's:
@@ -118,5 +86,4 @@ program_output_test(
     arguments = ["-e", "'/^[^\"]/{'", "-e", "N", "-e", "'s/\\n//'", "-e", "}"],
     stdin = "k1=\n\"v1\"\nk2=\n\"v2\"",
     expected_output = "k1=\"v1\"\nk2=\"v2\"",
-    tags = ["manual"],
 )

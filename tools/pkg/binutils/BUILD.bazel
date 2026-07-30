@@ -1,21 +1,21 @@
-"""GNU binutils 2.46.
+"""GNU binutils 2.46. NOT COMPLETE YET -- gas does not link.
 
 The assembler, linker and archiver GCC needs. tinycc has its own of all
 three, but GCC will not use them: it emits assembly for gas and drives ld
 directly.
 
 This is the first package built with the musl tinycc rather than the mes-libc
-one, and it is where a complete C library starts to pay for itself -- binutils
-uses far more of libc than anything before it.
+one. configure now runs to completion and most of the tree compiles; libbfd,
+libiberty, libctf, zlib, opcodes and gprof all build.
 
-It also needs the sed from tools/pkg/gnused/latest rather than the bootstrap
-one: config.status is assembled by one sed piped into another, and sed 4.0.9
-cannot run N when its input is stdin.
+What is left: linking gas fails with every libbfd symbol undefined --
+bfd_init, bfd_scan_vma, _bfd_std_section and the rest -- even though
+libbfd.a has been built and tcc -ar does write a symbol index into it. So
+this is not the "no armap" case; it is something narrower about how the
+archive libtool produces is consumed. Building in stages, so the libraries
+are finished first, did not change it.
 
 The recipe and both patches are nixpkgs' minimal-bootstrap binutils.
-
-BLOCKED: needs a working sed 4.2; see tools/pkg/gnused/latest. Tagged
-manual until then.
 """
 
 load("//tools/pkg:configure.bzl", "LIBC_HEADERS_TOOLCHAIN", "configure_package")
@@ -52,12 +52,24 @@ configure_package(
         "AR=\"tcc -ar\"",
         "RANLIB=true",
     ],
+    # The documentation is built by makeinfo, which does not exist in this
+    # bootstrap and is not wanted. `true` accepts the arguments and writes
+    # nothing, which is what the info rules need to succeed.
+    make_flags = ["MAKEINFO=true"],
+    tags = ["manual"],
+    # Staged, as nixpkgs does. binutils links its own libraries into its
+    # tools, and tinycc reads an archive once in the order it is given, so
+    # the libraries have to be finished before anything links against them.
+    build_targets = [
+        "all-libiberty all-bfd all-libctf all-zlib all-opcodes all-gas all-gprof",
+        "all-ld",
+        "",
+    ],
     # config.status runs awk, and the generated makefiles use it too.
     tools = [
         "//tools/pkg/gnused/latest:bin",
         "//tools/pkg/gawk:bin",
     ],
-    tags = ["manual"],
     configure_flags = [
         "--build=x86_64-unknown-linux-gnu",
         "--host=x86_64-unknown-linux-gnu",
