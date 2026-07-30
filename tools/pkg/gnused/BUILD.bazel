@@ -46,6 +46,22 @@ tcc_package(
         "-DSED_FEATURE_VERSION=\\\"4.0\\\"",
         "-DVERSION=\\\"4.0.9\\\"",
         "-DPACKAGE=\\\"sed\\\"",
+        # Not in live-bootstrap's makefile, and needed. sed guards its
+        # <stdlib.h> and <string.h> includes on these, so without them malloc
+        # and strchr are implicitly declared and C89 gives them a return type
+        # of int -- which on x86-64 truncates the pointer they really return.
+        # That is the same fault that made GNU make allocate without bound;
+        # see tools/mes/headers.bzl. Here it would only show once the heap
+        # climbed above 2 GB, so nothing would catch it in a short run.
+        "-DHAVE_STDLIB_H",
+        "-DHAVE_STRING_H",
+        "-DHAVE_MEMORY_H",
+        "-DHAVE_STRCHR",
+        "-DHAVE_STRERROR",
+        "-DHAVE_MEMCPY",
+        "-DHAVE_MEMMOVE",
+        "-DHAVE_SYS_TYPES_H",
+        "-DHAVE_UNISTD_H",
     ],
     sources = [
         # LIBC=mes takes getline rather than alloca.

@@ -61,7 +61,8 @@ def tcc_package(
         tarball,
         prefix,
         sources,
-        binary,
+        binary = None,
+        programs = None,
         cflags = [],
         ldflags = [],
         configure = [],
@@ -84,8 +85,13 @@ def tcc_package(
         name: Target name; the output directory holds bin/<binary>.
         tarball: The source archive.
         prefix: The directory the archive unpacks into.
-        sources: C sources to compile, relative to `prefix`.
-        binary: Name of the program to link and install.
+        sources: C sources to compile, relative to `prefix`. These are shared
+            by every program the package produces.
+        binary: Name of the program to link and install, when there is only
+            one. Sugar for a single-entry `programs`.
+        programs: Programs to link, as a map of name to the sources unique to
+            that program. A package like grep compiles one set of objects and
+            links several programs from it, each differing by a single file.
         cflags: Compiler flags, including the -D set that stands in for
             ./configure output.
         ldflags: Extra flags for the link step.
@@ -107,6 +113,11 @@ def tcc_package(
         tools: Extra tool directories to put on PATH.
         **kwargs: Passed through to the underlying kaem_run.
     """
+    if (binary == None) == (programs == None):
+        fail("%s needs exactly one of binary or programs" % name)
+    if binary != None:
+        programs = {binary: []}
+
     # tinycc knows where its own headers live, but only because those paths
     # were baked in when it was built; the directories still have to be staged
     # into the action. Naming them explicitly makes that dependency visible
@@ -149,35 +160,36 @@ def tcc_package(
             "# What ./configure would have produced, written out by hand.",
         ] + configure + [""]
 
-    lines += ["# Compile."]
+    lines += ["# Compile the objects every program shares."]
     for source, object in zip(sources, objects):
         lines.append("%s -c -o %s %s/%s" % (compile_prefix, object, prefix, source))
 
-    lines += [
-        "",
-        "# Link.",
-        " ".join([compile_prefix] + ldflags + ["-o", binary] + objects),
-        "",
-    ]
+    lines += ["", "# Link."]
+    for program in sorted(programs):
+        # A program's own sources are passed to the link as sources rather
+        # than compiled separately: they are what distinguishes it, so nothing
+        # else would reuse the object.
+        own = ["%s/%s" % (prefix, source) for source in programs[program]]
+        lines.append(
+            " ".join([compile_prefix] + ldflags + ["-o", program] + objects + own),
+        )
+    lines.append("")
 
     # kaem --strict aborts on a non-zero exit, and several of these programs
     # report their version with a non-zero status. Where that is the case the
     # check moves out to a Bazel test, which can assert the exit code it
     # actually expects.
     if check_argument:
-        lines += [
-            "# Smoke-test the result before installing it.",
-            "./%s %s" % (binary, check_argument),
-            "",
-        ]
+        lines += ["# Smoke-test the results before installing them."]
+        for program in sorted(programs):
+            lines.append("./%s %s" % (program, check_argument))
+        lines.append("")
 
-    lines += [
-        "# Install.",
-        "mkdir -p ${out}/bin",
-        "cp %s ${out}/bin/%s" % (binary, binary),
-        "chmod 555 ${out}/bin/%s" % binary,
-        "",
-    ]
+    lines += ["# Install.", "mkdir -p ${out}/bin"]
+    for program in sorted(programs):
+        lines.append("cp %s ${out}/bin/%s" % (program, program))
+        lines.append("chmod 555 ${out}/bin/%s" % program)
+    lines.append("")
 
     write_file(
         name = name + "_script",

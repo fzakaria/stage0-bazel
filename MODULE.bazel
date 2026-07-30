@@ -143,3 +143,11 @@ http_file(
     url = "https://mirror.team-cymru.com/gnu/sed/sed-4.0.9.tar.gz",
     downloaded_file_path = "sed-4.0.9.tar.gz",
 )
+
+# GNU grep 2.4, again the version both reference bootstraps use.
+http_file(
+    name = "gnugrep-src",
+    sha256 = "a32032bab36208509466654df12f507600dfe0313feebbcd218c32a70bf72a16",
+    url = "https://mirror.team-cymru.com/gnu/grep/grep-2.4.tar.gz",
+    downloaded_file_path = "grep-2.4.tar.gz",
+)

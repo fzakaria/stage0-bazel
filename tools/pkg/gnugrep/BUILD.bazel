@@ -1,0 +1,98 @@
+"""GNU grep 2.4.
+
+Autoconf runs grep constantly -- every AC_CHECK_* macro ends in one -- so
+this and sed are what make a ./configure script viable at all.
+
+The recipe is nixpkgs' minimal-bootstrap gnugrep/main.mk, which is in turn
+live-bootstrap's. As with sed the makefile is small enough to state directly,
+so the source list and -D set are transcribed here rather than run through
+make.
+
+grep, egrep and fgrep are the same program with a different default matcher.
+Upstream's makefile links the shared objects and then adds the alternative
+matcher on top of grepmat.o, which leaves two definitions of the same symbol
+in the link; the matchers are separated out here instead, one per program.
+"""
+
+load("//tools/pkg:defs.bzl", "installed_program", "tcc_package")
+load("//tools/stage0:files.bzl", "tool_dir")
+load("//tools/verify:run_test.bzl", "program_output_test")
+
+package(
+    default_visibility = ["//visibility:public"],
+)
+
+PREFIX = "grep-2.4"
+
+tcc_package(
+    name = "gnugrep",
+    tarball = "@gnugrep-src//file",
+    prefix = PREFIX,
+    programs = {
+        "grep": ["src/grepmat.c"],
+        "egrep": ["src/egrepmat.c"],
+        "fgrep": ["src/fgrepmat.c"],
+    },
+    cflags = [
+        "-DPACKAGE=\\\"grep\\\"",
+        "-DVERSION=\\\"2.4\\\"",
+        "-DHAVE_DIRENT_H=1",
+        "-DHAVE_UNISTD_H=1",
+        "-DHAVE_STRERROR=1",
+        "-DSTDC_HEADERS=1",
+    ],
+    sources = [
+        "src/grep.c",
+        "src/dfa.c",
+        "src/kwset.c",
+        "src/obstack.c",
+        "src/regex.c",
+        "src/stpcpy.c",
+        "src/savedir.c",
+        "src/getopt.c",
+        "src/getopt1.c",
+        "src/search.c",
+    ],
+)
+
+[
+    installed_program(
+        name = program,
+        package = ":gnugrep",
+        program = program,
+    )
+    for program in [
+        "grep",
+        "egrep",
+        "fgrep",
+    ]
+]
+
+tool_dir(
+    name = "bin",
+    tools = {
+        "grep": ":grep",
+        "egrep": ":egrep",
+        "fgrep": ":fgrep",
+    },
+)
+
+# Matching is what the program is for, so the check greps rather than asking
+# for a version string.
+program_output_test(
+    name = "gnugrep_match_test",
+    program = ":grep",
+    arguments = ["needle"],
+    stdin = "hay\nneedle in here\nmore hay",
+    expected_output = "needle in here",
+)
+
+# -E is the form autoconf reaches for first when it looks for egrep, so the
+# extended syntax has to work in the base program too.
+program_output_test(
+    name = "gnugrep_extended_test",
+    program = ":grep",
+    arguments = ["-E", "'^(one|two)$'"],
+    stdin = "one\nthree\ntwo",
+    expected_output = "one\ntwo",
+)
