@@ -1,0 +1,70 @@
+"""musl 1.2.6.
+
+The first C library in the chain that is not mes-libc. mes-libc exists to be
+small enough that mescc can compile it; it is not complete enough to build
+GCC, and the gaps in it are what every package so far has been patched
+around. musl is a real libc, and tinycc rebuilt against it is the compiler
+the rest of the bootstrap uses.
+
+The recipe is nixpkgs' minimal-bootstrap musl/tcc.nix. live-bootstrap's
+sigsetjmp patch is not applied: it rewrites a jecxz in the i386 assembly, and
+this is an x86-64 build where that file is not compiled.
+"""
+
+load("//tools/pkg:configure.bzl", "LIBC_HEADERS_OWN", "configure_package")
+
+package(
+    default_visibility = ["//visibility:public"],
+)
+
+configure_package(
+    name = "musl",
+    tarball = "@musl-src//file",
+    prefix = "musl-1.2.6",
+    # musl ships a complete set of headers and its internal ones have to win.
+    # With mes-libc's on the path first, src/include/features.h loses to a
+    # same-named file that does not define `hidden`, and the first
+    # declaration using it fails to parse.
+    libc_headers = LIBC_HEADERS_OWN,
+    # tinycc rejects _Complex outright -- tccgen.c answers the keyword with
+    # "not yet supported" and stops -- so the complex math cannot be compiled
+    # by the compiler available at this point. musl's makefile takes its
+    # source list from a wildcard, so removing the directory removes the
+    # functions; libc.a simply has no cexp and friends. Nothing between here
+    # and the C++ compiler uses complex arithmetic, and a later musl built by
+    # a real GCC would pick them back up.
+    extra_setup = [
+        "rm -rf src/complex",
+        # The x86-64 math routines are beyond this compiler in both forms:
+        # tinycc's assembler cannot parse the hand-written x87 long-double
+        # code, and the .c files there use SSE register constraints it does
+        # not implement. Every file in the directory has a portable C
+        # equivalent in src/math, which the build falls back to once the
+        # directory is gone; the arch versions are an optimisation, not a
+        # capability.
+        "rm -rf src/math/x86_64",
+        # tinycc's assembler does not know the @PLT suffix. This is a static
+        # build with no procedure linkage table, so the plain symbol is what
+        # the call should have been anyway. sigsetjmp is the only x86-64
+        # source that uses it, and it has no C equivalent to fall back to.
+        "sed -i -e s/setjmp@PLT/setjmp/ src/signal/x86_64/sigsetjmp.s",
+        # untar does not preserve the executable bit, and the install rules
+        # run this script by path rather than through a shell.
+        "chmod +x tools/install.sh",
+    ],
+    configure_flags = [
+        "--build=x86_64-unknown-linux-gnu",
+        "--host=x86_64-unknown-linux-gnu",
+        # There is no dynamic loader in this world, and nothing to load one.
+        "--disable-shared",
+    ],
+    make_flags = [
+        # tinycc is its own archiver, and there is no ranlib at all yet:
+        # tcc -ar writes the index as it goes, so a second pass is a no-op.
+        "AR=\"tcc -ar\"",
+        "RANLIB=true",
+        # musl's thread-local storage support needs a __set_thread_area that
+        # tinycc cannot generate here. Nothing in the bootstrap is threaded.
+        "CFLAGS=-DSYSCALL_NO_TLS",
+    ],
+)

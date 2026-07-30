@@ -30,7 +30,23 @@ _DECOMPRESSORS = {
     "xz": "unxz",
 }
 
-def _driver_lines(prefix, configure_flags, make_flags, install_target, cc_flags, exports, extra_setup):
+# Which C library's headers a package is compiled against.
+#
+# Everything up to now borrows mes-libc's, because it has no other. A C
+# library is the exception: musl ships a complete set of its own and they have
+# to be the only ones on the include path. mes-libc's would otherwise shadow
+# them -- the injected -I flags come before the ones the package's own
+# makefile adds -- and musl's internal headers would silently lose to
+# same-named files that mean something else.
+LIBC_HEADERS_MES = "mes"
+LIBC_HEADERS_OWN = "own"
+
+_LIBC_HEADERS = [
+    LIBC_HEADERS_MES,
+    LIBC_HEADERS_OWN,
+]
+
+def _driver_lines(prefix, configure_flags, make_flags, install_target, cc_flags, exports, extra_setup, libc_headers):
     """Returns the bash driver that configures, builds and installs a package.
 
     Args:
@@ -41,6 +57,7 @@ def _driver_lines(prefix, configure_flags, make_flags, install_target, cc_flags,
         cc_flags: Extra flags appended to the CC the package is given.
         exports: Shell assignments exported before ./configure runs.
         extra_setup: Shell lines run inside the tree before ./configure.
+        libc_headers: LIBC_HEADERS_MES or LIBC_HEADERS_OWN.
 
     Returns:
         A list of shell lines.
@@ -64,14 +81,18 @@ def _driver_lines(prefix, configure_flags, make_flags, install_target, cc_flags,
         "",
         "# tinycc knows where its own headers live only because those paths",
         "# were baked in when it was built; they still have to be named.",
+        "# tcc_include holds the compiler's own headers -- stdarg.h, stddef.h",
+        "# and the rest that belong to the compiler rather than to a libc --",
+        "# so it is needed whichever C library the package compiles against.",
         " ".join(
             [
                 "export CC=\"tcc",
                 "-B $root/$tcc_libs",
                 "-I $root/$tcc_include",
+            ] + ([
                 "-I $root/$mes_arch_include",
                 "-I $root/$mes_include",
-            ] + cc_flags,
+            ] if libc_headers == LIBC_HEADERS_MES else []) + cc_flags,
         ) + "\"",
         "",
     ]
@@ -109,13 +130,13 @@ def configure_package(
         name,
         tarball,
         prefix,
-        programs,
         configure_flags = [],
         make_flags = [],
         install_target = "install",
         cc_flags = [],
         exports = [],
         extra_setup = [],
+        libc_headers = LIBC_HEADERS_MES,
         patches = [],
         patch_labels = [],
         srcs = [],
@@ -132,7 +153,6 @@ def configure_package(
         name: Target name; the output directory is what `make install` wrote.
         tarball: The source archive.
         prefix: The directory the archive unpacks into.
-        programs: Names of installed programs under bin/ to expose as targets.
         configure_flags: Flags appended to ./configure.
         make_flags: Flags passed to make, for both the build and the install.
         install_target: The make target that installs.
@@ -140,6 +160,9 @@ def configure_package(
         exports: Shell assignments exported before ./configure runs.
         extra_setup: Shell lines run inside the unpacked tree before
             ./configure, for the file shuffling some packages need.
+        libc_headers: LIBC_HEADERS_MES to compile against mes-libc's headers,
+            or LIBC_HEADERS_OWN for a package that ships its own C library
+            headers and must not see any others.
         patches: Execroot-relative paths of patch files, applied at -p1.
         patch_labels: The same patches as labels, so they reach the action.
         srcs: Additional files the build reads.
@@ -153,6 +176,8 @@ def configure_package(
     """
     if compression not in _DECOMPRESSORS:
         fail("unknown compression %s" % compression)
+    if libc_headers not in _LIBC_HEADERS:
+        fail("libc_headers must be one of %s, got %s" % (_LIBC_HEADERS, libc_headers))
 
     write_file(
         name = name + "_driver",
@@ -165,6 +190,7 @@ def configure_package(
             cc_flags,
             exports,
             extra_setup,
+            libc_headers,
         ),
     )
 

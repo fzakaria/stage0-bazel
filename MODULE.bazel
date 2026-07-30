@@ -169,3 +169,13 @@ http_file(
     url = "https://mirror.team-cymru.com/gnu/gzip/gzip-1.2.4.tar.gz",
     downloaded_file_path = "gzip-1.2.4.tar.gz",
 )
+
+# musl. The first C library in the chain that is not mes-libc, and the one
+# GCC will be built against: mes-libc exists to be small enough to bootstrap,
+# not to be complete enough to compile a compiler.
+http_file(
+    name = "musl-src",
+    sha256 = "d585fd3b613c66151fc3249e8ed44f77020cb5e6c1e635a616d3f9f82460512a",
+    url = "https://musl.libc.org/releases/musl-1.2.6.tar.gz",
+    downloaded_file_path = "musl-1.2.6.tar.gz",
+)

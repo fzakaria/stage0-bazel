@@ -26,7 +26,6 @@ configure_package(
     name = "gzip_dist",
     tarball = "@gzip-src//file",
     prefix = "gzip-1.2.4",
-    programs = ["gzip"],
     # gzip defines strlwr unconditionally, and mes-libc both declares and
     # provides one, so the two collide at link time. Renaming gzip's through
     # the preprocessor moves its definition and its one call site together
