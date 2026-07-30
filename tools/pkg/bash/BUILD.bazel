@@ -1,0 +1,158 @@
+"""bash 2.05b, the first shell in the chain.
+
+Everything after this can be built by ./configure. Nothing before it could,
+which is why the utilities so far were compiled from hand-written source
+lists.
+
+2.05b rather than something current: later releases need locale support that
+mes-libc does not provide. This is the version live-bootstrap and nixpkgs both
+bootstrap through, and the makefiles and patches are live-bootstrap's, vendored
+so that no file outside the audited graph enters the build.
+
+make runs recipes without a shell when they contain no metacharacters, which
+is what makes it usable before a shell exists.
+
+NOT WORKING YET, and tagged manual so it stays out of //... . make segfaults
+part-way through, and non-deterministically: the same makefile sometimes
+builds and sometimes does not, which points at a heap bug rather than at
+anything in bash.
+
+The likely cause is that this is being built with the wrong tinycc. nixpkgs
+builds every package with `tinycc-mes` -- a sixth stage, compiled from the
+current tinycc at repo.or.cz rather than from janneke's bootstrappable fork,
+using the compiler at the end of the chain here. That stage carries a large
+number of fixes the bootstrappable fork does not have. Adding it is the next
+step; see the roadmap in README.md.
+"""
+
+load("@bazel_skylib//rules:write_file.bzl", "write_file")
+load("//tools/pkg:defs.bzl", "installed_program")
+load("//tools/stage0:files.bzl", "tool_dir")
+load("//tools/stage0:kaem.bzl", "kaem_run")
+load("//tools/verify:run_test.bzl", "program_output_test")
+
+package(
+    default_visibility = ["//visibility:public"],
+)
+
+PREFIX = "bash-2.05b"
+
+PATCHES = [
+    # mes-libc has no locale support.
+    "patches/mes-libc.patch",
+    # `int name, namelen;` is wrong for mes-libc, where name is a char*.
+    "patches/tinycc.patch",
+    # Guards around features this build does not want.
+    "patches/missing-defines.patch",
+    "patches/locale.patch",
+    "patches/dev-tty.patch",
+]
+
+MAKEFILES = [
+    "mk/main.mk",
+    "mk/common.mk",
+    "mk/builtins.mk",
+]
+
+# The compiler as the makefiles invoke it. tinycc knows where its own headers
+# are, but the directories still have to be named so they are staged.
+# The quotes matter: kaem splits on whitespace, and make has to receive the
+# whole compiler command line as a single CC= argument.
+_CC = "".join([
+    "CC=\"tcc -B ${tcc_libs}",
+    " -I ${tcc_include}",
+    " -I ${mes_arch_include}",
+    " -I ${mes_include}\"",
+])
+
+write_file(
+    name = "build_script",
+    out = "bash.kaem",
+    content = [
+        "# Unpack.",
+        "ungz --file ${tarball} --output bash.tar",
+        "untar --file bash.tar",
+        "",
+        "# Patch. -d keeps the directory change inside patch, so PATH -- whose",
+        "# entries are relative to the execroot -- keeps working.",
+    ] + [
+        "patch -d %s -Np0 -i ../tools/pkg/bash/%s" % (PREFIX, p)
+        for p in PATCHES
+    ] + [
+        "",
+        "# Configure. live-bootstrap's makefiles replace the generated ones,",
+        "# and the three headers ./configure would write are empty here.",
+        "cp tools/pkg/bash/mk/main.mk %s/Makefile" % PREFIX,
+        "cp tools/pkg/bash/mk/builtins.mk %s/builtins/Makefile" % PREFIX,
+        "cp tools/pkg/bash/mk/common.mk %s/common.mk" % PREFIX,
+        "catm %s/config.h" % PREFIX,
+        "catm %s/include/version.h" % PREFIX,
+        "catm %s/include/pipesize.h" % PREFIX,
+        "",
+        "# Build. make -C rather than cd, for the same reason as patch -d.",
+        "make -C %s %s mkbuiltins" % (PREFIX, _CC),
+        "make -C %s/builtins %s libbuiltins.a" % (PREFIX, _CC),
+        "make -C %s %s" % (PREFIX, _CC),
+        "",
+        "# Install.",
+        "mkdir -p ${out}/bin",
+        "cp %s/bash ${out}/bin/bash" % PREFIX,
+        "chmod 555 ${out}/bin/bash",
+        "",
+    ],
+)
+
+kaem_run(
+    name = "bash",
+    script = "bash.kaem",
+    tags = ["manual"],
+    srcs = PATCHES + MAKEFILES + [
+        "//tools/tcc:src",
+        "//tools/mes:arch_headers",
+        "@mes-m2//:headers",
+    ],
+    substitutions = {"tarball": "@bash-src//file"},
+    directory_substitutions = {
+        "tcc_libs": "//tools/tcc:tcc_libs",
+        "tcc_include": "//tools/tcc:src_include_dir",
+        "mes_arch_include": "//tools/mes:arch_include_dir",
+        "mes_include": "@mes-m2//:headers",
+    },
+    tools = [
+        ":tcc",
+        "//tools/mescc-tools-extra:bin",
+        "//tools/pkg/gnumake:bin",
+        "//tools/pkg/gnupatch:bin",
+    ],
+)
+
+tool_dir(
+    name = "tcc",
+    tools = {"tcc": "//tools/tcc:tcc"},
+)
+
+installed_program(
+    name = "bash_bin",
+    package = ":bash",
+    program = "bash",
+    tags = ["manual"],
+)
+
+# Later packages call the shell as `sh` as well as `bash`; upstream installs a
+# symlink for it, and naming the same program twice does the same job.
+tool_dir(
+    name = "bin",
+    tools = {
+        "bash": ":bash_bin",
+        "sh": ":bash_bin",
+    },
+    tags = ["manual"],
+)
+
+program_output_test(
+    name = "bash_test",
+    tags = ["manual"],
+    program = ":bash_bin",
+    arguments = ["-c", "'echo shell works'"],
+    expected_output = "shell works",
+)

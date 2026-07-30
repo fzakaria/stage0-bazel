@@ -61,9 +61,31 @@ alias(
     actual = "//tools/tcc:tcc-mes",
 )
 
+# A statement of what the build trusts: how many inputs were built here, how
+# many came from hash-pinned archives, and which binaries were taken on faith.
+alias(
+    name = "attestation",
+    actual = "//tools/verify:attestation",
+)
+
 # Building this asserts that nothing in the bootstrap graph runs a program the
 # graph did not build. Run it in CI.
 alias(
     name = "trust-report",
     actual = "//tools/verify:no_native_toolchain",
+)
+
+alias(
+    name = "tcc",
+    actual = "//tools/tcc:tcc",
+)
+
+alias(
+    name = "make",
+    actual = "//tools/pkg/gnumake:make",
+)
+
+alias(
+    name = "patch",
+    actual = "//tools/pkg/gnupatch:patch",
 )

@@ -114,3 +114,12 @@ http_file(
     url = "https://mirror.team-cymru.com/gnu/make/make-4.4.1.tar.gz",
     downloaded_file_path = "make-4.4.1.tar.gz",
 )
+
+# bash 2.05b. Later releases need locale support that mes-libc does not have;
+# this is the version live-bootstrap and nixpkgs bootstrap through.
+http_file(
+    name = "bash-src",
+    sha256 = "ba03d412998cc54bd0b0f2d6c32100967d3137098affdc2d32e6e7c11b163fe4",
+    url = "https://mirror.team-cymru.com/gnu/bash/bash-2.05b.tar.gz",
+    downloaded_file_path = "bash-2.05b.tar.gz",
+)

@@ -4,6 +4,7 @@ These targets exist to be built in CI. They do not contribute anything to the
 toolchain; they assert properties of it.
 """
 
+load("//tools/verify:attest.bzl", "hermeticity_attestation")
 load("//tools/verify:no_native_toolchain.bzl", "no_native_toolchain_audit")
 
 package(
@@ -32,5 +33,21 @@ no_native_toolchain_audit(
         "//tools/stage0/phase14:get_machine",
         "//tools/stage0/phase10:hex2",
         "//tools/stage0/phase9:M1",
+    ],
+)
+
+# The same graph, reported as a statement about what the build trusts rather
+# than as a pass or fail.
+hermeticity_attestation(
+    name = "attestation",
+    targets = [
+        "//tools/pkg/gnumake",
+        "//tools/pkg/gnupatch",
+        "//tools/tcc:tcc",
+        "//tools/tcc/tests:features",
+        "//tools/mes/tests:hello",
+        "//tools/mescc-tools-extra:bin",
+        "//tools/stage0/phase11:kaem",
+        "//tools/stage0/phase15:M2-Planet",
     ],
 )

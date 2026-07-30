@@ -42,6 +42,7 @@ TrustInfo = provider(
     fields = {
         "violations": "depset of strings describing actions that ran an untrusted program",
         "trusted_seeds": "depset of exec paths of allowlisted seed binaries that were executed",
+        "inputs": "depset[File]: every file any action in the subgraph consumed",
     },
 )
 
@@ -75,10 +76,16 @@ def _describe_violation(label, action, program):
 def _no_native_toolchain_aspect_impl(target, ctx):
     violations = []
     seeds = []
+    action_inputs = []
 
     # Inspect the program each action actually execs. Internal actions have an
     # empty argv and are handled by Bazel itself, so they are skipped.
     for action in target.actions:
+        # Inputs are collected for every action, including the internal ones:
+        # an attestation about what the build reads has to cover the files
+        # Bazel itself copies and expands, not only the ones it execs on.
+        action_inputs.append(action.inputs)
+
         if action.mnemonic in _INTERNAL_MNEMONICS:
             continue
 
@@ -100,15 +107,18 @@ def _no_native_toolchain_aspect_impl(target, ctx):
     # verdict for the entire transitive graph.
     transitive_violations = []
     transitive_seeds = []
+    transitive_inputs = []
     for attr_name in dir(ctx.rule.attr):
         for dep in _deps_of(ctx.rule.attr, attr_name):
             if TrustInfo in dep:
                 transitive_violations.append(dep[TrustInfo].violations)
                 transitive_seeds.append(dep[TrustInfo].trusted_seeds)
+                transitive_inputs.append(dep[TrustInfo].inputs)
 
     return [TrustInfo(
         violations = depset(violations, transitive = transitive_violations),
         trusted_seeds = depset(seeds, transitive = transitive_seeds),
+        inputs = depset(transitive = action_inputs + transitive_inputs),
     )]
 
 def _deps_of(rule_attr, attr_name):
