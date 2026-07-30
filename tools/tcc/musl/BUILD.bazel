@@ -84,7 +84,10 @@ write_file(
             "-I $src -I $src/include -I $musl/include",
             "$src/lib/libtcc1.c",
         ]),
-        "tcc -ar cr libs/libtcc1.a libtcc1-boot.o",
+        # alloca is not in libtcc1.c: current tinycc keeps it in assembly, and
+        # a program that calls alloca fails to link without it.
+        "tcc -c -o alloca-boot.o -D TCC_TARGET_X86_64=1 $src/lib/alloca.S",
+        "tcc -ar cr libs/libtcc1.a libtcc1-boot.o alloca-boot.o",
         "",
         "# Round one: the mes-libc tinycc builds a tinycc that links against",
         "# musl. The compiler doing the work still needs its own headers,",
@@ -118,8 +121,9 @@ write_file(
             "-I $src -I $musl/include -B libs",
             "$src/lib/libtcc1.c",
         ]),
+        "./tcc-musl -c -o alloca.o -D TCC_TARGET_X86_64=1 $src/lib/alloca.S",
         "rm -f libtcc1.a",
-        "./tcc-musl -ar cr libtcc1.a libtcc1.o",
+        "./tcc-musl -ar cr libtcc1.a libtcc1.o alloca.o",
         "",
         "# Install. musl's own libraries and headers travel with the compiler",
         "# so that a single -B is enough for anything built by it.",

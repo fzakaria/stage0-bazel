@@ -1,0 +1,86 @@
+"""GNU awk 3.0.6.
+
+binutils' config.status runs awk, so nothing past this point configures
+without it.
+
+3.0.6 is the version both reference bootstraps use. It is built against musl
+rather than mes-libc, because by this point the musl tinycc exists and there
+is no reason to reach for the smaller library.
+"""
+
+load("//tools/pkg:configure.bzl", "LIBC_HEADERS_TOOLCHAIN", "configure_package")
+load("//tools/pkg:defs.bzl", "installed_program")
+load("//tools/stage0:files.bzl", "tool_dir")
+load("//tools/verify:run_test.bzl", "program_output_test")
+
+package(
+    default_visibility = ["//visibility:public"],
+)
+
+PATCHES = [
+    # config.status writes a stamp file with `date`, which is not built yet
+    # and which nothing needs.
+    "patches/no-stamp.patch",
+]
+
+configure_package(
+    name = "gawk_dist",
+    tarball = "@gawk-src//file",
+    prefix = "gawk-3.0.6",
+    libc_headers = LIBC_HEADERS_TOOLCHAIN,
+    patches = ["tools/pkg/gawk/" + patch for patch in PATCHES],
+    patch_labels = PATCHES,
+    patch_strip = 0,
+    configure_flags = [
+        "--build=x86_64-unknown-linux-gnu",
+        "--host=x86_64-unknown-linux-gnu",
+        "--disable-dependency-tracking",
+        "--disable-nls",
+    ],
+    # Probes that need to run a test program to answer. There is no way to run
+    # one during a cross-style configure, and these are the answers for Linux.
+    exports = [
+        "ac_cv_func_getpgrp_void=yes",
+        "ac_cv_func_tzset=yes",
+        # Left to itself configure decides alloca does not work and defines
+        # C_ALLOCA, which makes awk.h declare alloca itself. tinycc already
+        # provides __builtin_alloca, so that declaration collides with it.
+        # musl has alloca.h and the builtin works; this says so.
+        "ac_cv_header_alloca_h=yes",
+        "ac_cv_func_alloca_works=yes",
+    ],
+    # The default target builds the documentation as well, which needs
+    # makeinfo. Only the program is wanted.
+    build_targets = ["gawk"],
+    # gawk's install rules build and install the manual, which needs makeinfo.
+    # Only the program is wanted, so it is copied directly.
+    install_commands = [
+        "mkdir -p \"$out/bin\"",
+        "cp gawk \"$out/bin/gawk\"",
+        "chmod 555 \"$out/bin/gawk\"",
+    ],
+)
+
+installed_program(
+    name = "gawk",
+    package = ":gawk_dist",
+    program = "gawk",
+)
+
+# Nearly everything invokes it as `awk`; upstream installs a link for it, and
+# naming the same program twice does the same job.
+tool_dir(
+    name = "bin",
+    tools = {
+        "gawk": ":gawk",
+        "awk": ":gawk",
+    },
+)
+
+program_output_test(
+    name = "gawk_field_test",
+    program = ":gawk",
+    arguments = ["'{ print $2 }'"],
+    stdin = "alpha beta gamma",
+    expected_output = "beta",
+)

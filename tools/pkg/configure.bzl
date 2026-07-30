@@ -41,19 +41,30 @@ _DECOMPRESSORS = {
 LIBC_HEADERS_MES = "mes"
 LIBC_HEADERS_OWN = "own"
 
+# The musl tinycc installs its compiler, musl's headers and musl's runtime as
+# one tree, so a single directory names all three. Packages built after that
+# point use this rather than the scattered mes-libc directories.
+LIBC_HEADERS_TOOLCHAIN = "toolchain"
+
 _LIBC_HEADERS = [
     LIBC_HEADERS_MES,
     LIBC_HEADERS_OWN,
+    LIBC_HEADERS_TOOLCHAIN,
 ]
 
-def _driver_lines(prefix, configure_flags, make_flags, install_target, cc_flags, exports, extra_setup, libc_headers):
+def _driver_lines(prefix, configure_flags, make_flags, build_targets, install_target, install_commands, cc_flags, exports, extra_setup, libc_headers):
     """Returns the bash driver that configures, builds and installs a package.
 
     Args:
         prefix: The directory the tarball unpacks into.
         configure_flags: Flags appended to ./configure.
         make_flags: Flags passed to the build and install runs of make.
+        build_targets: Targets for the build run of make; empty means the
+            makefile's default.
         install_target: The make target that installs, usually "install".
+        install_commands: Shell lines that install the build products, used
+            instead of running make when the install rules need tools that do
+            not exist yet.
         cc_flags: Extra flags appended to the CC the package is given.
         exports: Shell assignments exported before ./configure runs.
         extra_setup: Shell lines run inside the tree before ./configure.
@@ -87,12 +98,16 @@ def _driver_lines(prefix, configure_flags, make_flags, install_target, cc_flags,
         " ".join(
             [
                 "export CC=\"tcc",
+            ] + ([
+                "-B $root/$toolchain/lib",
+                "-I $root/$toolchain/include",
+            ] if libc_headers == LIBC_HEADERS_TOOLCHAIN else [
                 "-B $root/$tcc_libs",
                 "-I $root/$tcc_include",
             ] + ([
                 "-I $root/$mes_arch_include",
                 "-I $root/$mes_include",
-            ] if libc_headers == LIBC_HEADERS_MES else []) + cc_flags,
+            ] if libc_headers == LIBC_HEADERS_MES else [])) + cc_flags,
         ) + "\"",
         "",
     ]
@@ -104,6 +119,31 @@ def _driver_lines(prefix, configure_flags, make_flags, install_target, cc_flags,
 
     lines += [
         "cd " + prefix,
+        "",
+        "# untar does not preserve the executable bit, and a configure script",
+        "# runs its helpers -- missing, install-sh, config.sub, and the",
+        "# configure scripts of subdirectories -- by path rather than through",
+        "# a shell. Anything meant to be run has to get that bit back.",
+        "#",
+        "# The walk is a shell function because findutils does not exist yet",
+        "# at this point in the bootstrap.",
+        "restore_executable_bits () {",
+        "  local entry",
+        "  for entry in \"$1\"/*; do",
+        "    if [ -d \"$entry\" ]; then",
+        "      restore_executable_bits \"$entry\"",
+        "    elif [ -f \"$entry\" ]; then",
+        "      case \"$entry\" in",
+        "        */configure | *.sh | */missing | */install-sh | */mkinstalldirs \\",
+        "        | */config.sub | */config.guess | */depcomp | */compile \\",
+        "        | */move-if-change | */ylwrap | */test-driver)",
+        "          chmod +x \"$entry\"",
+        "          ;;",
+        "      esac",
+        "    fi",
+        "  done",
+        "}",
+        "restore_executable_bits .",
         "",
     ]
 
@@ -118,12 +158,20 @@ def _driver_lines(prefix, configure_flags, make_flags, install_target, cc_flags,
         "",
         "# Build. SHELL is passed explicitly because make ignores it from the",
         "# environment by design.",
-        " ".join(["make", "SHELL=\"$bash_path\""] + make_flags),
-        "",
-        "# Install.",
-        " ".join(["make", "SHELL=\"$bash_path\"", install_target] + make_flags),
+        " ".join(["make", "SHELL=\"$bash_path\""] + make_flags + build_targets),
         "",
     ]
+
+    # A package whose install rules need tools this bootstrap does not have
+    # yet -- makeinfo is the usual one -- says what to copy instead.
+    if install_commands:
+        lines += ["# Install."] + install_commands + [""]
+    else:
+        lines += [
+            "# Install.",
+            " ".join(["make", "SHELL=\"$bash_path\"", install_target] + make_flags),
+            "",
+        ]
     return lines
 
 def configure_package(
@@ -132,19 +180,23 @@ def configure_package(
         prefix,
         configure_flags = [],
         make_flags = [],
+        build_targets = [],
         install_target = "install",
+        install_commands = [],
         cc_flags = [],
         exports = [],
         extra_setup = [],
         libc_headers = LIBC_HEADERS_MES,
         patches = [],
         patch_labels = [],
+        patch_strip = 1,
         srcs = [],
         compression = "gz",
         tcc = "//tools/tcc/current:tcc",
         tcc_libs = "//tools/tcc/current:tcc_libs",
         tcc_include = "//tools/tcc/current:src_include_dir",
         tcc_src = "//tools/tcc/current:src",
+        toolchain = "//tools/tcc/musl:tcc-musl",
         tools = [],
         **kwargs):
     """Builds a package by running its own ./configure, make and make install.
@@ -155,7 +207,12 @@ def configure_package(
         prefix: The directory the archive unpacks into.
         configure_flags: Flags appended to ./configure.
         make_flags: Flags passed to make, for both the build and the install.
+        build_targets: Targets for the build run of make; empty means the
+            makefile's default target.
         install_target: The make target that installs.
+        install_commands: Shell lines that install the build products, used
+            instead of running make when the install rules need tools that do
+            not exist yet.
         cc_flags: Extra flags appended to the CC the package is given.
         exports: Shell assignments exported before ./configure runs.
         extra_setup: Shell lines run inside the unpacked tree before
@@ -163,8 +220,9 @@ def configure_package(
         libc_headers: LIBC_HEADERS_MES to compile against mes-libc's headers,
             or LIBC_HEADERS_OWN for a package that ships its own C library
             headers and must not see any others.
-        patches: Execroot-relative paths of patch files, applied at -p1.
+        patches: Execroot-relative paths of patch files.
         patch_labels: The same patches as labels, so they reach the action.
+        patch_strip: The -p level the patches are written against.
         srcs: Additional files the build reads.
         compression: Archive compression: "gz", "bz2" or "xz".
         tcc: The tinycc to build with.
@@ -186,7 +244,9 @@ def configure_package(
             prefix,
             configure_flags,
             make_flags,
+            build_targets,
             install_target,
+            install_commands,
             cc_flags,
             exports,
             extra_setup,
@@ -205,9 +265,9 @@ def configure_package(
     ]
 
     if patches:
-        lines.append("# Patch, at -p1 relative to the unpacked tree.")
+        lines.append("# Patch, relative to the unpacked tree.")
         for patch in patches:
-            lines.append("patch -d %s -Np1 -i ../%s" % (prefix, patch))
+            lines.append("patch -d %s -Np%d -i ../%s" % (prefix, patch_strip, patch))
         lines.append("")
 
     lines += [
@@ -224,9 +284,11 @@ def configure_package(
         content = lines,
     )
 
+    uses_toolchain = libc_headers == LIBC_HEADERS_TOOLCHAIN
+
     tool_dir(
         name = name + "_tcc",
-        tools = {"tcc": tcc},
+        tools = {"tcc": "//tools/tcc/musl:tcc" if uses_toolchain else tcc},
     )
 
     kaem_run(
@@ -236,7 +298,7 @@ def configure_package(
             "tarball": tarball,
             "driver": name + "_build.sh",
         },
-        directory_substitutions = {
+        directory_substitutions = {"toolchain": toolchain} if uses_toolchain else {
             "tcc_libs": tcc_libs,
             "tcc_include": tcc_include,
             "mes_arch_include": "//tools/mes:arch_include_dir",
@@ -244,10 +306,11 @@ def configure_package(
         },
         srcs = patch_labels + [
             name + "_build.sh",
+        ] + ([toolchain] if uses_toolchain else [
             tcc_src,
             "//tools/mes:arch_headers",
             "//tools/mes:header_dir",
-        ] + srcs,
+        ]) + srcs,
         # Order matters: earlier directories win. coreutils has to come before
         # mescc-tools-extra, whose rm, cp and mkdir are single-purpose
         # stand-ins that take no options -- `rm -f` reaches the wrong one

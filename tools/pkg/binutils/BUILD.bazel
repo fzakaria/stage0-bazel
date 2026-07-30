@@ -1,0 +1,112 @@
+"""GNU binutils 2.46. NOT WORKING YET -- see below.
+
+The assembler, linker and archiver GCC needs. tinycc has its own of all
+three, but GCC will not use them: it emits assembly for gas and drives ld
+directly.
+
+This is the first package built with the musl tinycc rather than the mes-libc
+one, and it is where a complete C library starts to pay for itself -- binutils
+uses far more of libc than anything before it.
+
+The recipe and both patches are nixpkgs' minimal-bootstrap binutils.
+
+What is missing: configure runs to completion, but config.status cannot
+generate the makefiles. binutils 2.46 was produced by a modern autoconf,
+whose subs.awk splits string assignments across lines, and gawk 3.0.6 --
+the version the earlier utilities are built from -- rejects that:
+
+    gawk: subs.awk:8: S["LTLIBOBJS"]=
+                                     ^ unexpected newline
+
+The fix is a newer gawk built against musl, which the musl tinycc should now
+be able to compile. Until then every target here is tagged manual so a plain
+`bazel build //...` does not trip over it.
+"""
+
+load("//tools/pkg:configure.bzl", "LIBC_HEADERS_TOOLCHAIN", "configure_package")
+load("//tools/pkg:defs.bzl", "installed_program")
+load("//tools/stage0:files.bzl", "tool_dir")
+load("//tools/verify:run_test.bzl", "program_output_test")
+
+package(
+    default_visibility = ["//visibility:public"],
+)
+
+PATCHES = [
+    # ansidecl.h defines __attribute__ away for compilers older than GCC 2.7,
+    # and tinycc reports a version that lands in that range while in fact
+    # supporting the attributes. Losing them turns into an mmap assertion
+    # failure much later.
+    "patches/fix-tinycc-attribute.patch",
+    # Make ld's output deterministic without being asked.
+    "patches/deterministic.patch",
+]
+
+configure_package(
+    name = "binutils",
+    tarball = "@binutils-src//file",
+    prefix = "binutils-2.46.0",
+    compression = "xz",
+    libc_headers = LIBC_HEADERS_TOOLCHAIN,
+    patches = ["tools/pkg/binutils/" + patch for patch in PATCHES],
+    patch_labels = PATCHES,
+    # binutils is what provides ar and ranlib, so its own build cannot use
+    # them. tinycc is its own archiver and writes the index as it goes, which
+    # is what ranlib would otherwise add.
+    exports = [
+        "AR=\"tcc -ar\"",
+        "RANLIB=true",
+    ],
+    # config.status runs awk, and the generated makefiles use it too.
+    tools = ["//tools/pkg/gawk:bin"],
+    tags = ["manual"],
+    configure_flags = [
+        "--build=x86_64-unknown-linux-gnu",
+        "--host=x86_64-unknown-linux-gnu",
+        "--with-sysroot=/",
+        "--disable-dependency-tracking",
+        "--disable-nls",
+        "--enable-deterministic-archives",
+        "--disable-gprofng",
+        "--enable-new-dtags",
+        "--with-lib-path=:",
+        "--disable-gold",
+        "--disable-plugins",
+    ],
+)
+
+PROGRAMS = [
+    "ar",
+    "as",
+    "ld",
+    "nm",
+    "objcopy",
+    "objdump",
+    "ranlib",
+    "readelf",
+    "strip",
+]
+
+[
+    installed_program(
+        name = program,
+        package = ":binutils",
+        program = program,
+        tags = ["manual"],
+    )
+    for program in PROGRAMS
+]
+
+tool_dir(
+    name = "bin",
+    tools = {program: ":" + program for program in PROGRAMS},
+    tags = ["manual"],
+)
+
+program_output_test(
+    name = "binutils_ld_test",
+    program = ":ld",
+    arguments = ["--version"],
+    expected_output = "GNU ld (GNU Binutils) 2.46",
+    tags = ["manual"],
+)

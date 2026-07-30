@@ -170,6 +170,24 @@ http_file(
     downloaded_file_path = "gzip-1.2.4.tar.gz",
 )
 
+# GNU awk 3.0.6. binutils' config.status runs awk, so nothing past that
+# point configures without it.
+http_file(
+    name = "gawk-src",
+    sha256 = "abf276e10c7b871332d07bf2b652133a27419677d157383097bbd153e58a8bfc",
+    url = "https://mirror.team-cymru.com/gnu/gawk/gawk-3.0.6.tar.gz",
+    downloaded_file_path = "gawk-3.0.6.tar.gz",
+)
+
+# GNU binutils. The assembler and linker GCC needs; tinycc has its own of
+# both, but GCC will not use them.
+http_file(
+    name = "binutils-src",
+    sha256 = "d75a94f4d73e7a4086f7513e67e439e8fcdcbb726ffe63f4661744e6256b2cf2",
+    url = "https://mirror.team-cymru.com/gnu/binutils/binutils-2.46.0.tar.xz",
+    downloaded_file_path = "binutils-2.46.0.tar.xz",
+)
+
 # musl. The first C library in the chain that is not mes-libc, and the one
 # GCC will be built against: mes-libc exists to be small enough to bootstrap,
 # not to be complete enough to compile a compiler.
