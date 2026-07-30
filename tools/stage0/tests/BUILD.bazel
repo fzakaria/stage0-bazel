@@ -1,0 +1,21 @@
+"""Checks that a kaem script can build a directory of outputs."""
+
+load("@bazel_skylib//rules:write_file.bzl", "write_file")
+load("//tools/stage0:kaem.bzl", "kaem_run")
+
+package(
+    default_visibility = ["//visibility:public"],
+)
+
+write_file(
+    name = "greeting",
+    out = "greeting.txt",
+    content = ["hello from a bootstrapped shell"],
+)
+
+kaem_run(
+    name = "smoke",
+    script = "smoke.kaem",
+    substitutions = {"greeting": ":greeting"},
+    tools = "//tools/mescc-tools-extra:bin",
+)

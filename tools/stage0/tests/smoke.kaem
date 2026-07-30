@@ -1,0 +1,6 @@
+# Exercises the pieces a real package build depends on: a directory output,
+# variable substitution, and calling programs the bootstrap produced.
+mkdir -p ${out}/bin
+cp ${greeting} ${out}/greeting.txt
+catm ${out}/both.txt ${greeting} ${greeting}
+replace --file ${greeting} --output ${out}/shouted.txt --match-on hello --replace-with HELLO

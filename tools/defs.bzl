@@ -15,6 +15,13 @@ load(
     _cat_files = "cat_files",
 )
 load(
+    "//tools/stage0:files.bzl",
+    _ToolDirInfo = "ToolDirInfo",
+    _patched_tree = "patched_tree",
+    _relocate_files = "relocate_files",
+    _tool_dir = "tool_dir",
+)
+load(
     "//tools/stage0:hex0.bzl",
     _hex0_binary = "hex0_binary",
 )
@@ -35,10 +42,18 @@ load(
     _m2_compile = "m2_compile",
 )
 load(
+    "//tools/stage0:kaem.bzl",
+    _kaem_run = "kaem_run",
+)
+load(
     "//tools/stage0:mes.bzl",
     _MesInfo = "MesInfo",
     _mes_distribution = "mes_distribution",
     _mes_scheme_test = "mes_scheme_test",
+)
+load(
+    "//tools/stage0:mesoplanet.bzl",
+    _m2_mesoplanet_binary = "m2_mesoplanet_binary",
 )
 load(
     "//tools/stage0:mescc.bzl",
@@ -59,6 +74,19 @@ hex1_binary = _hex1_binary
 hex2_binary = _hex2_binary
 m1_expand = _m1_expand
 m2_compile = _m2_compile
+
+# Staging source trees, and collecting tools under the names that programs
+# written for the bootstrap look them up by.
+ToolDirInfo = _ToolDirInfo
+patched_tree = _patched_tree
+relocate_files = _relocate_files
+tool_dir = _tool_dir
+
+# M2-Mesoplanet, the C compiler driver used for small standalone programs.
+m2_mesoplanet_binary = _m2_mesoplanet_binary
+
+# kaem, the shell every package past tinycc is built with.
+kaem_run = _kaem_run
 
 # Mes, the Scheme interpreter the bootstrap hands off to.
 MesInfo = _MesInfo
