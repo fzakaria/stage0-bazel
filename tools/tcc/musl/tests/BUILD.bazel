@@ -1,0 +1,81 @@
+"""End-to-end check that the musl tinycc produces working programs.
+
+This is the strongest statement the chain can make so far: a C program
+compiled and linked by a tinycc that was itself compiled seven compilers deep
+from the hex0 seed, against a C library that same chain built.
+"""
+
+load("@bazel_skylib//rules:write_file.bzl", "write_file")
+load("//tools/pkg:defs.bzl", "installed_program")
+load("//tools/stage0:files.bzl", "tool_dir")
+load("//tools/stage0:kaem.bzl", "kaem_run")
+load("//tools/verify:run_test.bzl", "program_output_test")
+
+package(
+    default_visibility = ["//visibility:public"],
+)
+
+write_file(
+    name = "build_script",
+    out = "hello_build.sh",
+    content = [
+        "set -eu",
+        "",
+        "# The compiler's headers and libraries are two directories inside",
+        "# one installed tree, which is why this is a script rather than a",
+        "# rule: a TreeArtifact's subdirectories cannot be named as labels.",
+        "root=\"$PWD\"",
+        "out=\"$root/$out\"",
+        "toolchain=\"$root/$toolchain\"",
+        "",
+        "mkdir -p \"$out/bin\"",
+        " ".join([
+            "\"$toolchain/bin/tcc\"",
+            "-B \"$toolchain/lib\"",
+            "-I \"$toolchain/include\"",
+            "-static",
+            "-o \"$out/bin/hello\"",
+            "$root/$source",
+        ]),
+        "chmod 555 \"$out/bin/hello\"",
+        "",
+    ],
+)
+
+write_file(
+    name = "kaem_script",
+    out = "hello.kaem",
+    content = [
+        "mkdir -p ${out}",
+        "bash ${driver}",
+        "",
+    ],
+)
+
+kaem_run(
+    name = "hello_pkg",
+    script = "hello.kaem",
+    substitutions = {
+        "driver": "hello_build.sh",
+        "source": "hello.c",
+    },
+    directory_substitutions = {"toolchain": "//tools/tcc/musl:tcc-musl"},
+    srcs = ["//tools/tcc/musl:tcc-musl"],
+    tools = [
+        "//tools/pkg/coreutils:bin",
+        "//tools/pkg/bash:bin",
+        "//tools/mescc-tools-extra:bin",
+    ],
+)
+
+installed_program(
+    name = "hello",
+    package = ":hello_pkg",
+    program = "hello",
+)
+
+program_output_test(
+    name = "hello_test",
+    program = ":hello",
+    expected_output = "hello from musl, 4",
+)
