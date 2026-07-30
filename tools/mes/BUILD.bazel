@@ -7,16 +7,17 @@ load("//tools/stage0:hex2_1.bzl", "hex2_binary")
 load("//tools/stage0:m1.bzl", "m1_expand")
 load("//tools/stage0:m2.bzl", "m2_compile")
 load("//tools/stage0:bloodelf.bzl", "blood_elf")
-
+load("//tools/stage0:mes.bzl", "mes_tool")
 package(
     default_visibility = ["//visibility:public"],
 )
+
 
 m2_compile(
     name = "mes.M1",
     srcs = [ 
     # do not sort
-    "@mes-m2//:include/mes/config.h",
+    ":config.h",
     "@mes-m2//:include/mes/lib-mini.h",
     "@mes-m2//:include/mes/lib.h",
     "@mes-m2//:lib/linux/x86_64-mes-m2/crt1.c",
@@ -166,7 +167,7 @@ m1_expand(
 )
 
 hex2_binary(
-    name = "mes-m2",
+    name = "mes-m2-internal",
     srcs = select(
         {
             "@bazel_tools//src/conditions:linux_x86_64": [
@@ -184,5 +185,25 @@ hex2_binary(
     is_little_endian = select({
         "@bazel_tools//src/conditions:linux_x86_64": True,
     }),
-    tool = "//tools/stage0/phase8:hex2-1"
+    tool = "//tools/stage0/phase8:hex2-1",
+)
+
+sh_binary(
+    name = "mes-m2",
+    data = [
+        "@mes-m2//:module_files",
+        ":mes-m2-internal",
+        "@mes-m2//:mes/module/mes/boot-5.scm",
+    ],
+    srcs = [
+        ":mes-m2.sh",
+    ],
+    args = [
+        "$(location :mes-m2-internal)",
+        "$(location @mes-m2//:mes/module/mes/boot-5.scm)",
+    ],
+)
+
+mes_tool(
+    name = "test_output",
 )

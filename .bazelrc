@@ -1,0 +1,34 @@
+# Bazel configuration for stage0-bazel.
+#
+# The central invariant of this repository is that nothing in the bootstrap
+# graph may touch a C/C++ toolchain supplied by the host. Every flag below
+# exists to make that invariant hold and to make a violation loud.
+
+# Refuse to auto-detect a host C++ toolchain. Bazel still creates the
+# @local_config_cc repository, but every tool in it becomes a stub that
+# fails the action instead of silently shelling out to /usr/bin/gcc.
+common --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1
+
+# Toolchain resolution (rather than the legacy --crosstool_top path) is the
+# only way this repository's cc_toolchain can ever be selected.
+build --incompatible_enable_cc_toolchain_resolution
+
+# Do not let the host environment leak into actions: a fixed PATH means an
+# action that reaches for `cc`, `as` or `ld` fails rather than picking up
+# whatever the developer happens to have installed.
+build --incompatible_strict_action_env
+
+# Bootstrap actions are pure file-in/file-out; none of them need the network.
+build --sandbox_default_allow_network=false
+
+# The stage0 binaries are freestanding static ELF executables. Keep the
+# runfiles tree simple so the shape of what we ship is easy to reason about.
+build --nolegacy_external_runfiles
+
+# Surface the full command line of a failing bootstrap action; debugging a
+# hex2 or M1 invocation is impossible from the summary alone.
+build --verbose_failures
+test --test_output=errors
+
+# //tools/verify:no_native_toolchain_test asserts the same invariant at
+# analysis time by walking the bootstrap graph; see that package for details.
