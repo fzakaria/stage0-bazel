@@ -3,13 +3,27 @@
 GNU Mes is a Scheme interpreter and C compiler for bootstrapping the GNU System.
 """
 
+load("@bazel_skylib//rules:write_file.bzl", "write_file")
 load("//tools/stage0:hex2_1.bzl", "hex2_binary")
 load("//tools/stage0:m1.bzl", "m1_expand")
 load("//tools/stage0:m2.bzl", "m2_compile")
 load("//tools/stage0:bloodelf.bzl", "blood_elf")
-load("//tools/stage0:mes.bzl", "mes_tool")
+load("//tools/stage0:mes.bzl", "mes_distribution", "mes_scheme_test")
+
 package(
     default_visibility = ["//visibility:public"],
+)
+
+# Upstream generates this header from ./configure. Reproducing the two lines
+# it actually contains keeps configure -- and the shell it needs -- out of the
+# bootstrap. MES_VERSION must match the archive named in MODULE.bazel.
+write_file(
+    name = "config_h",
+    out = "config.h",
+    content = [
+        "#undef SYSTEM_LIBC",
+        "#define MES_VERSION \"0.27\"",
+    ],
 )
 
 
@@ -188,22 +202,16 @@ hex2_binary(
     tool = "//tools/stage0/phase8:hex2-1",
 )
 
-sh_binary(
-    name = "mes-m2",
-    data = [
-        "@mes-m2//:module_files",
-        ":mes-m2-internal",
-        "@mes-m2//:mes/module/mes/boot-5.scm",
-    ],
-    srcs = [
-        ":mes-m2.sh",
-    ],
-    args = [
-        "$(location :mes-m2-internal)",
-        "$(location @mes-m2//:mes/module/mes/boot-5.scm)",
-    ],
+mes_distribution(
+    name = "mes",
+    interpreter = ":mes-m2-internal",
+    runtime_files = ["@mes-m2//:runtime_files"],
 )
 
-mes_tool(
-    name = "test_output",
+# The interpreter is only useful once it can find and evaluate its own Scheme,
+# so booting it is the real test that the stage0 hand-off worked.
+mes_scheme_test(
+    name = "mes_boot_test",
+    mes = ":mes",
+    expression = "(display %version)(newline)(display (map (lambda (x) (* x x)) (list 1 2 3)))(newline)",
 )

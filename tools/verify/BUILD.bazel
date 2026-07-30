@@ -13,6 +13,8 @@ package(
 no_native_toolchain_audit(
     name = "no_native_toolchain",
     targets = [
+        "//tools/mes:mes",
+        "//tools/stage0/phase11:kaem",
         "//tools/stage0/phase15:M2-Planet",
         "//tools/stage0/phase13:blood-elf",
         "//tools/stage0/phase12:M2-Mesoplanet",

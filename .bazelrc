@@ -30,5 +30,10 @@ build --nolegacy_external_runfiles
 build --verbose_failures
 test --test_output=errors
 
+# Tests are exempt from the no-host-tools rule: Bazel's own test runner is a
+# bash script, and the audits live in test targets rather than in the graph
+# they audit. Give tests the real PATH so that runner can be found.
+test --test_env=PATH
+
 # //tools/verify:no_native_toolchain_test asserts the same invariant at
 # analysis time by walking the bootstrap graph; see that package for details.
