@@ -38,3 +38,10 @@ filegroup(
     ]),
     visibility = ["//visibility:public"],
 )
+
+# Every C source of the library, for the concatenated form tinycc consumes.
+filegroup(
+    name = "lib_sources",
+    srcs = glob(["lib/**/*.c"]),
+    visibility = ["//visibility:public"],
+)

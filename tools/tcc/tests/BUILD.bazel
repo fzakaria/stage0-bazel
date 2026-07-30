@@ -1,0 +1,35 @@
+"""End-to-end check that tinycc produces working programs.
+
+This is the strongest statement the chain can currently make: a C program
+compiled and linked by tinycc, against a C library tinycc itself built, all
+descended from the hex0 seed.
+"""
+
+load("//tools/stage0:tcc.bzl", "tcc_binary")
+load("//tools/verify:run_test.bzl", "program_output_test")
+
+package(
+    default_visibility = ["//visibility:public"],
+)
+
+tcc_binary(
+    name = "hello",
+    srcs = [
+        "hello.c",
+        "//tools/mes:arch_headers",
+        "@mes-m2//:headers",
+    ],
+    main = "tests/hello.c",
+    include_dir_markers = [
+        "//tools/mes:include/MESCC_INCLUDEDIR",
+        "@mes-m2//:include/errno.h",
+    ],
+    libs = "//tools/tcc:tcc-mes_libs",
+    tcc = "//tools/tcc:tcc-mes",
+)
+
+program_output_test(
+    name = "hello_test",
+    program = ":hello",
+    expected_output = "hello from tcc",
+)

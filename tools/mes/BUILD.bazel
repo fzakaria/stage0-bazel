@@ -53,6 +53,17 @@ relocate_files(
     prefix = "include/arch",
 )
 
+# The directory the arch headers live under, as one target: the marker names
+# the directory and the headers make it non-empty. Anything compiling mes
+# source needs this on its include path alongside mes's own include/.
+filegroup(
+    name = "arch_include_dir",
+    srcs = [
+        ":arch_headers",
+        ":include/MESCC_INCLUDEDIR",
+    ],
+)
+
 
 m2_compile(
     name = "mes.M1",

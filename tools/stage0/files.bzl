@@ -62,8 +62,16 @@ def _tool_dir_impl(ctx):
     return [
         ToolDirInfo(
             path = links[0].dirname,
+            # The symlinks alone are not enough: an action that puts this
+            # directory on PATH has to have the programs they point at staged
+            # as well, along with anything those programs need at runtime.
             files = depset(links, transitive = [
-                target[DefaultInfo].default_runfiles.files
+                depset(
+                    transitive = [
+                        target[DefaultInfo].files,
+                        target[DefaultInfo].default_runfiles.files,
+                    ],
+                )
                 for target in ctx.attr.tools.values()
             ]),
         ),

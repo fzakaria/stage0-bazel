@@ -17,8 +17,10 @@ the host participates, and that claim is checked rather than asserted; see
 | M2-Planet, M1, blood-elf, kaem, M2-Mesoplanet, get_machine (phases 6–15) | ✅ |
 | GNU Mes (Scheme interpreter) | ✅ boots and evaluates |
 | mescc (C99 compiler) and the mes C library | ✅ compiles and links working programs |
-| tinycc (`tcc-mes`), native x86-64 | ✅ builds, runs, compiles C to x86-64 objects |
-| tinycc self-rebuild chain (boot0…bootstrappable) | ❌ next step |
+| tinycc (`tcc-mes`), native x86-64 | ✅ builds, runs, compiles and links working programs |
+| mes C library rebuilt by tinycc | ✅ |
+| mescc-tools-extra and a `kaem_run` rule | ✅ |
+| tinycc self-rebuild chain (boot0…bootstrappable) | ⚠️ builds, but `tcc-boot0` segfaults; see below |
 | binutils, GCC 4.7 (first with usable C++), modern GCC | ❌ not started |
 
 **There is no C or C++ `cc_toolchain` yet, and this module cannot build
@@ -43,11 +45,25 @@ hello from mescc
 
 $ bazel run //:tcc-mes -- -v
 tcc version 0.9.28-mes (x86_64 Linux)
+
+$ bazel run //tools/tcc/tests:hello
+hello from tcc
 ```
 
 Those binaries are statically linked x86-64 ELF executables whose only
 untrusted input is the hex0 seed, and `tcc-mes` emits x86-64 objects — it is a
-native compiler, not a cross compiler.
+native compiler, not a cross compiler. `//tools/tcc/tests:hello` is the
+strongest statement the chain currently makes: a C program using `malloc` and
+stdio, compiled and linked by tinycc against a C library tinycc itself built.
+
+### Where it currently stops
+
+The self-rebuild chain in `tools/tcc/BUILD.bazel` is written but does not
+work, and is tagged `manual` so `//...` stays green. `tcc-boot0` links and
+answers `-v`, but segfaults on every compile. The library it links against is
+not at fault: the same library and the same `tcc-mes` produce the working
+`hello` above. So the defect is in how `tcc-mes` compiles tinycc's own source,
+and bisecting the `HAVE_*` feature flags is the obvious next move.
 
 ## Building
 
@@ -139,29 +155,18 @@ The remaining path to C++ follows
 [live-bootstrap](https://github.com/fosslinux/live-bootstrap), which is the
 reference for how far this has to go:
 
-1. **Rebuild tinycc with itself.** nixpkgs walks five stages
-   (`boot0` … `bootstrappable`), each enabling more of the language —
-   bitfields, then floats, then `setjmp` — and recompiling the mes C library
-   with the previous stage's compiler each time. This needs the mes libc
-   *amalgamations* (`lib/libc.c`, `lib/crt1.c`, …), which are plain
-   concatenations of the sources already built here, so `catm` produces them.
-2. **A `kaem_run` rule.** Everything past this point is built by
-   `./configure && make`. nixpkgs handles it with one primitive,
-   `kaem.runCommand`: run a script under the bootstrapped `kaem` shell with
-   declared inputs and a directory output. Bazel can express exactly that with
-   a `TreeArtifact` output; `kaem` is already built here (phase 11), and it
-   needs `mescc-tools-extra` (`ungz`, `untar`, `cp`, `mkdir`, `replace`)
-   alongside it. This rule is the single largest piece of remaining
-   infrastructure — once it exists the rest is transcription.
-3. **The utility packages**, in nixpkgs' order: musl, gnumake, gnused,
+1. **Fix the self-rebuild chain**, described above. Everything it needs is
+   already in place: the staged source, the flags for all five stages, the
+   library rebuild, and the `kaem_run` rule that drives it.
+2. **The utility packages**, in nixpkgs' order: musl, gnumake, gnused,
    gnugrep, gawk, gnutar, gzip, bzip2, gnupatch, diffutils, findutils,
-   coreutils, heirloom, bash, binutils, bison, gnum4, xz, zlib.
-4. **GCC 4.6 (C, then C++) → GCC 10.4**, with GMP, MPFR and MPC.
+   coreutils, heirloom, bash, binutils, bison, gnum4, xz, zlib. Each is a
+   `kaem_run` over `./configure && make`, so the shape is already settled.
+3. **GCC 4.6 (C, then C++) → GCC 10.4**, with GMP, MPFR and MPC.
 
 The 29-package list, versions, patches and configure flags are all pinned in
 [nixpkgs' minimal-bootstrap](https://github.com/NixOS/nixpkgs/tree/master/pkgs/os-specific/linux/minimal-bootstrap),
-so this is transcription plus debugging rather than research. Step 2 is the
-part that is genuinely new work in Bazel.
+so what remains is transcription plus debugging rather than research.
 
 ## References
 

@@ -12,6 +12,7 @@ own template expansion, since neither `patch` nor `sed` exists yet.
 load("@bazel_skylib//rules:write_file.bzl", "write_file")
 load("//tools/stage0:files.bzl", "patched_tree")
 load("//tools/stage0:mescc.bzl", "mescc_binary", "mescc_object")
+load("//tools/tcc:stages.bzl", "tcc_libraries", "tcc_stage")
 load("//tools/verify:run_test.bzl", "program_output_test")
 
 package(
@@ -121,3 +122,60 @@ program_output_test(
     arguments = ["-v"],
     expected_output = "tcc version 0.9.28-mes (x86_64 Linux)",
 )
+
+# The C library rebuilt by the mescc-built tinycc. This is the first stage
+# where tinycc compiles anything other than itself.
+tcc_libraries(
+    name = "tcc-mes_libs",
+    tcc = ":tcc-mes",
+    mes_headers = "@mes-m2//:headers",
+    libtcc_defines = ["TCC_TARGET_X86_64=1"],
+)
+
+# The self-rebuild chain. NOT WORKING YET, and tagged manual so it stays out
+# of //... : tcc-boot0 links and reports its version, but segfaults on every
+# compile. The library it links against is not the problem -- the same library
+# and the same tcc-mes produce a working program in //tools/tcc/tests -- so
+# the fault is in how tcc-mes compiles tinycc's own source. Bisecting the
+# HAVE_* flags is the obvious next move.
+#
+# Each stage compiles tinycc with the stage before it
+# and then recompiles the C library with what it just built, so the next stage
+# may use language features the previous compiler could not handle. The
+# sequence and its flags follow nixpkgs' tinycc/bootstrappable.nix.
+TCC_STAGES = [
+    ("tcc-boot0", ["HAVE_LONG_LONG=1", "HAVE_SETJMP=1"], ["HAVE_LONG_LONG=1"]),
+    ("tcc-boot1", ["HAVE_BITFIELD=1", "HAVE_LONG_LONG=1", "HAVE_SETJMP=1"], ["HAVE_LONG_LONG=1"]),
+    (
+        "tcc-boot2",
+        ["HAVE_BITFIELD=1", "HAVE_FLOAT_STUB=1", "HAVE_LONG_LONG=1", "HAVE_SETJMP=1"],
+        ["HAVE_FLOAT_STUB=1", "HAVE_LONG_LONG=1"],
+    ),
+    (
+        "tcc-boot3",
+        ["HAVE_BITFIELD=1", "HAVE_FLOAT=1", "HAVE_LONG_LONG=1", "HAVE_SETJMP=1"],
+        ["HAVE_FLOAT=1", "HAVE_LONG_LONG=1"],
+    ),
+    (
+        "tcc",
+        ["HAVE_BITFIELD=1", "HAVE_FLOAT=1", "HAVE_LONG_LONG=1", "HAVE_SETJMP=1"],
+        ["HAVE_FLOAT=1", "HAVE_LONG_LONG=1"],
+    ),
+]
+
+[
+    tcc_stage(
+        name = stage,
+        prev = ":tcc-mes" if index == 0 else ":" + TCC_STAGES[index - 1][0],
+        prev_libs = ":tcc-mes_libs" if index == 0 else ":%s_libs" % TCC_STAGES[index - 1][0],
+        src = ":src",
+        src_dir_marker = ":src/config.h",
+        defines = defines,
+        libtcc_defines = libtcc_defines + ["TCC_TARGET_X86_64=1"],
+        mes_headers = "@mes-m2//:headers",
+        tags = ["manual"],
+    )
+    for index, (stage, defines, libtcc_defines) in enumerate(TCC_STAGES)
+]
+
+

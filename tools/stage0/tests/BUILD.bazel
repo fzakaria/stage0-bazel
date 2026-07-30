@@ -17,5 +17,5 @@ kaem_run(
     name = "smoke",
     script = "smoke.kaem",
     substitutions = {"greeting": ":greeting"},
-    tools = "//tools/mescc-tools-extra:bin",
+    tools = ["//tools/mescc-tools-extra:bin"],
 )
