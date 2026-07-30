@@ -13,12 +13,58 @@ The file list comes from nixpkgs' mes/sources.json, key x86_64.linux.gcc,
 which is `libc_gnu_SOURCES` from upstream's configure-lib.sh already expanded.
 """
 
+load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
 load("//tools/stage0:catm.bzl", "cat_files")
 load("//tools/stage0:files.bzl", "relocate_files")
 
 package(
     default_visibility = ["//visibility:public"],
 )
+
+# tinycc on x86-64 passes variadic arguments through a register save area,
+# and mes's stdarg.h models va_list as a plain char* -- the i386 convention.
+# The two cannot both be on the include path, so tinycc's headers win and
+# these two sources have to stop depending on mes's.
+#
+# va_arg8 exists only in mes's stdarg.h. The has_l bookkeeping replaces it:
+# under the x86-64 ABI an int and a long occupy different amounts of the
+# argument area, so `%d` and `%ld` have to be read differently, which mes's
+# version did not distinguish.
+#
+# Both patches are taken from nixpkgs' minimal-bootstrap mes/default.nix.
+_PRINTF_SUBSTITUTIONS = {
+    "int count = 0;": "int count = 0; int has_l = 0;",
+    "long d = va_arg (ap, long);": """
+          long d;
+          if (has_l) {
+            has_l = 0;
+            d = va_arg (ap, long);
+          } else if (c != 'd' && c != 'i') {
+            d = (long) (va_arg (ap, unsigned int));
+          } else {
+            d = (long) (va_arg (ap, int));
+          }
+        """,
+    "if (c == 'l')": """
+          if (c == 'l') {
+            has_l = 1;
+            c = *++p;
+          } else if (0)""",
+    "va_arg8": "va_arg",
+}
+
+[
+    expand_template(
+        name = name + "_patched",
+        template = "@mes-m2//:lib/stdio/%s.c" % name,
+        out = "patched/%s.c" % name,
+        substitutions = _PRINTF_SUBSTITUTIONS,
+    )
+    for name in [
+        "vfprintf",
+        "vsnprintf",
+    ]
+]
 
 LIBC_SOURCES = [
     "@mes-m2//:lib/mes/__init_io.c",
@@ -151,9 +197,9 @@ LIBC_SOURCES = [
     "@mes-m2//:lib/stdio/snprintf.c",
     "@mes-m2//:lib/stdio/sprintf.c",
     "@mes-m2//:lib/stdio/sscanf.c",
-    "@mes-m2//:lib/stdio/vfprintf.c",
+    ":patched/vfprintf.c",
     "@mes-m2//:lib/stdio/vprintf.c",
-    "@mes-m2//:lib/stdio/vsnprintf.c",
+    ":patched/vsnprintf.c",
     "@mes-m2//:lib/stdio/vsprintf.c",
     "@mes-m2//:lib/stdio/vsscanf.c",
     "@mes-m2//:lib/stdlib/qsort.c",

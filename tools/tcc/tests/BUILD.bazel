@@ -21,6 +21,7 @@ tcc_binary(
     ],
     main = "tests/hello.c",
     include_dir_markers = [
+        "//tools/tcc:src/include/TCC_INCLUDEDIR",
         "//tools/mes:include/MESCC_INCLUDEDIR",
         "@mes-m2//:include/errno.h",
     ],
@@ -32,4 +33,29 @@ program_output_test(
     name = "hello_test",
     program = ":hello",
     expected_output = "hello from tcc",
+)
+
+# The same program, built by the compiler at the end of the self-rebuild
+# chain, using the C library that compiler built.
+tcc_binary(
+    name = "features",
+    srcs = [
+        "features.c",
+        "//tools/mes:arch_headers",
+        "@mes-m2//:headers",
+    ],
+    main = "tests/features.c",
+    include_dir_markers = [
+        "//tools/tcc:src/include/TCC_INCLUDEDIR",
+        "//tools/mes:include/MESCC_INCLUDEDIR",
+        "@mes-m2//:include/errno.h",
+    ],
+    libs = "//tools/tcc:tcc_libs",
+    tcc = "//tools/tcc:tcc",
+)
+
+program_output_test(
+    name = "features_test",
+    program = ":features",
+    expected_output = "5 20 1234567890123 7",
 )

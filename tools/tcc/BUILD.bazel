@@ -56,6 +56,23 @@ TINYCC_PATCHES = {
     ],
 }
 
+# tinycc ships its own stdarg.h, stddef.h and friends, and they are not
+# interchangeable with mes's: mes defines va_list as char*, which is the i386
+# convention, while tinycc's x86-64 va_list is a struct holding the register
+# save area. Anything compiled with the wrong one links fine and then reads
+# arguments from the wrong place. This marker names the directory so tinycc's
+# headers can be put first on every include path.
+write_file(
+    name = "src_includedir_marker",
+    out = "src/include/TCC_INCLUDEDIR",
+    content = ["tinycc include search directory"],
+)
+
+filegroup(
+    name = "src_include_dir",
+    srcs = [":src/include/TCC_INCLUDEDIR"],
+)
+
 patched_tree(
     name = "src",
     srcs = ["@tinycc//:tree"],
@@ -132,14 +149,7 @@ tcc_libraries(
     libtcc_defines = ["TCC_TARGET_X86_64=1"],
 )
 
-# The self-rebuild chain. NOT WORKING YET, and tagged manual so it stays out
-# of //... : tcc-boot0 links and reports its version, but segfaults on every
-# compile. The library it links against is not the problem -- the same library
-# and the same tcc-mes produce a working program in //tools/tcc/tests -- so
-# the fault is in how tcc-mes compiles tinycc's own source. Bisecting the
-# HAVE_* flags is the obvious next move.
-#
-# Each stage compiles tinycc with the stage before it
+# The self-rebuild chain. Each stage compiles tinycc with the stage before it
 # and then recompiles the C library with what it just built, so the next stage
 # may use language features the previous compiler could not handle. The
 # sequence and its flags follow nixpkgs' tinycc/bootstrappable.nix.
@@ -173,9 +183,16 @@ TCC_STAGES = [
         defines = defines,
         libtcc_defines = libtcc_defines + ["TCC_TARGET_X86_64=1"],
         mes_headers = "@mes-m2//:headers",
-        tags = ["manual"],
     )
     for index, (stage, defines, libtcc_defines) in enumerate(TCC_STAGES)
 ]
 
 
+
+# The compiler at the end of the chain, self-hosted through five rebuilds.
+program_output_test(
+    name = "tcc_chain_test",
+    program = ":tcc",
+    arguments = ["-v"],
+    expected_output = "tcc version 0.9.28-mes (x86_64 Linux)",
+)

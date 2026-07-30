@@ -82,6 +82,8 @@ def tcc_libraries(name, tcc, mes_headers, prev_libs = None, libtcc_defines = [],
     cflags = [
         _LIBC_STD,
         "-I",
+        "${tcc_include}",
+        "-I",
         "${mes_arch_include}",
         "-I",
         "${mes_include}",
@@ -109,6 +111,7 @@ def tcc_libraries(name, tcc, mes_headers, prev_libs = None, libtcc_defines = [],
     }
     directory_substitutions = {
         "crt_dir": "//tools/mes/mes-libc:crt",
+        "tcc_include": "//tools/tcc:src_include_dir",
         "mes_include": mes_headers,
         "mes_arch_include": "//tools/mes:arch_include_dir",
     }
@@ -118,6 +121,15 @@ def tcc_libraries(name, tcc, mes_headers, prev_libs = None, libtcc_defines = [],
     kaem_run(
         name = name,
         script = name + ".kaem",
+        # The marker only names the directory; the headers themselves have to
+        # be staged too, or tinycc silently falls through to mes's stdarg.h
+        # and every variadic function in the library reads its arguments from
+        # the wrong place.
+        srcs = [
+            "//tools/tcc:src",
+            "//tools/mes:arch_headers",
+            "@mes-m2//:headers",
+        ],
         substitutions = substitutions,
         directory_substitutions = directory_substitutions,
         tools = [
@@ -177,6 +189,7 @@ def tcc_stage(
         main = "src/tcc.c",
         defines = _COMMON_DEFINES + defines,
         include_dir_markers = [
+            "//tools/tcc:src/include/TCC_INCLUDEDIR",
             src_dir_marker,
             # The compiler doing the building needs the mes headers on its
             # own include path; what gets baked into the compiler being built
@@ -184,7 +197,13 @@ def tcc_stage(
             "//tools/mes:include/MESCC_INCLUDEDIR",
             "@mes-m2//:include/errno.h",
         ],
-        sysinclude_dirs = [mes_headers],
+        # What the compiler being built will search when nobody passes -I.
+        # tinycc's own headers first, for the same reason they come first
+        # above.
+        sysinclude_dirs = [
+            "//tools/tcc:src_include_dir",
+            mes_headers,
+        ],
         libs = prev_libs,
         tcc = prev,
         tags = tags,
