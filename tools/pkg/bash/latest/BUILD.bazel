@@ -1,14 +1,15 @@
-"""bash 5.3, built by bash 2.05b. NOT COMPLETE YET -- it does not link.
+"""bash 5.3, built by bash 2.05b.
 
 2.05b is from 2002 and autoconf is now 2.72. The shell it emits is beyond the
-older one in ways that only show up inside `eval`, so every configure past
-this point needs a current shell.
+older one in ways that only show up inside `eval`:
 
-configure now runs to completion and the whole tree compiles. The link fails
-with symbols from builtins/libbuiltins.a undefined -- internal_getopt,
-reset_internal_getopt, lcurrent. tcc resolves archive members in either order
-when tested directly, so this is about how that archive is built or reached,
-not about tcc's archive support.
+    ./configure: eval: line 1: unexpected EOF while looking for matching `\''
+
+so every configure past this point needs a current shell. 2.05b's job was to
+get from kaem to here, and this is the last thing it builds.
+
+It needs the sed from tools/pkg/gnused/latest, because config.status is
+assembled by one sed piped into another and sed 4.0.9 cannot run N on stdin.
 """
 
 load("//tools/pkg:configure.bzl", "DECOMPRESS_GNU", "LIBC_HEADERS_TOOLCHAIN", "configure_package")
@@ -56,14 +57,12 @@ configure_package(
         "//tools/pkg/gnused/latest:bin",
         "//tools/pkg/gawk:bin",
     ],
-    tags = ["manual"],
 )
 
 installed_program(
     name = "bash",
     package = ":bash_dist",
     program = "bash",
-    tags = ["manual"],
 )
 
 # Later packages call the shell as `sh` as well as `bash`; upstream installs a
@@ -74,7 +73,6 @@ tool_dir(
         "bash": ":bash",
         "sh": ":bash",
     },
-    tags = ["manual"],
 )
 
 program_output_test(
@@ -82,15 +80,14 @@ program_output_test(
     program = ":bash",
     arguments = ["-c", "'echo shell works'"],
     expected_output = "shell works",
-    tags = ["manual"],
 )
 
-# The construct 2.05b could not parse: a single-quoted string reaching eval
-# through one level of expansion, which is how autoconf writes config.status.
+# += is bash 3.1 and later. autoconf uses it in as_fn_append, and 2.05b
+# answers that with a syntax error inside eval, which is what made every
+# modern configure script unusable.
 program_output_test(
-    name = "bash_eval_quoting_test",
+    name = "bash_append_operator_test",
     program = ":bash",
-    arguments = ["-c", "'v=\\$\\'\\\\r\\'; eval x=\\'ok\\'; echo $x'"],
-    expected_output = "ok",
-    tags = ["manual"],
+    arguments = ["-c", "'v=one; v+=two; echo $v'"],
+    expected_output = "onetwo",
 )

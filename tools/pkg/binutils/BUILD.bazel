@@ -1,19 +1,17 @@
-"""GNU binutils 2.46. NOT COMPLETE YET -- gas does not link.
+"""GNU binutils 2.46.
 
 The assembler, linker and archiver GCC needs. tinycc has its own of all
 three, but GCC will not use them: it emits assembly for gas and drives ld
 directly.
 
 This is the first package built with the musl tinycc rather than the mes-libc
-one. configure now runs to completion and most of the tree compiles; libbfd,
-libiberty, libctf, zlib, opcodes and gprof all build.
+one, and it is where a complete C library starts to pay for itself.
 
-What is left: linking gas fails with every libbfd symbol undefined --
-bfd_init, bfd_scan_vma, _bfd_std_section and the rest -- even though
-libbfd.a has been built and tcc -ar does write a symbol index into it. So
-this is not the "no armap" case; it is something narrower about how the
-archive libtool produces is consumed. Building in stages, so the libraries
-are finished first, did not change it.
+Three things it needs that earlier packages did not: bash 5.3, because
+autoconf 2.72 emits shell that bash 2.05b mis-parses inside eval; the sed
+from tools/pkg/gnused/latest, because config.status is assembled by one sed
+piped into another and sed 4.0.9 cannot run N on stdin; and a raised
+lt_cv_sys_max_cmd_len, because tcc -ar cannot append to an archive.
 
 The recipe and both patches are nixpkgs' minimal-bootstrap binutils.
 """
@@ -51,12 +49,19 @@ configure_package(
     exports = [
         "AR=\"tcc -ar\"",
         "RANLIB=true",
+        # libtool builds a large archive in batches, calling $AR once per
+        # batch and relying on `ar r` meaning insert-or-replace. tcc -ar does
+        # not: it reopens the archive with "wb" every time, so each batch
+        # throws away the one before it and the finished library is missing
+        # everything but the last. libbfd came out 1.3 MB with no bfd_init in
+        # it. Raising the command-length libtool believes it has keeps the
+        # archive to a single call.
+        "lt_cv_sys_max_cmd_len=8388608",
     ],
     # The documentation is built by makeinfo, which does not exist in this
     # bootstrap and is not wanted. `true` accepts the arguments and writes
     # nothing, which is what the info rules need to succeed.
     make_flags = ["MAKEINFO=true"],
-    tags = ["manual"],
     # Staged, as nixpkgs does. binutils links its own libraries into its
     # tools, and tinycc reads an archive once in the order it is given, so
     # the libraries have to be finished before anything links against them.
@@ -66,7 +71,10 @@ configure_package(
         "",
     ],
     # config.status runs awk, and the generated makefiles use it too.
+    # bash 5.3 first: autoconf 2.72 emits shell that bash 2.05b mis-parses
+    # inside eval, and configure_package takes whichever bash PATH finds.
     tools = [
+        "//tools/pkg/bash/latest:bin",
         "//tools/pkg/gnused/latest:bin",
         "//tools/pkg/gawk:bin",
     ],
@@ -102,21 +110,24 @@ PROGRAMS = [
         name = program,
         package = ":binutils",
         program = program,
-        tags = ["manual"],
-    )
+        )
     for program in PROGRAMS
 ]
 
 tool_dir(
     name = "bin",
     tools = {program: ":" + program for program in PROGRAMS},
-    tags = ["manual"],
 )
 
+# The linker GCC will be told to use, reporting itself.
 program_output_test(
     name = "binutils_ld_test",
     program = ":ld",
     arguments = ["--version"],
-    expected_output = "GNU ld (GNU Binutils) 2.46",
-    tags = ["manual"],
+    expected_output = """GNU ld (GNU Binutils) 2.46.0.20260210
+Copyright (C) 2026 Free Software Foundation, Inc.
+This program is free software; you may redistribute it under the terms of
+the GNU General Public License version 3 or (at your option) a later version.
+This program has absolutely no warranty.""",
 )
+
