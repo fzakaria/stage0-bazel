@@ -1,0 +1,89 @@
+"""GNU awk 5.3.2, built by GNU awk 3.0.6.
+
+binutils and GCC come from a modern autoconf, whose config.status feeds awk a
+subs.awk that splits string assignments across lines. gawk 3.0.6 rejects
+that:
+
+    gawk: subs.awk:8: S["LTLIBOBJS"]=
+                                     ^ unexpected newline
+
+so every configure past this point needs a newer awk. 3.0.6 is still what
+builds it, which is the only reason the older one exists.
+
+NOT REACHED YET: this needs the sed in tools/pkg/gnused/latest, which
+builds but is miscompiled -- see that package. Tagged manual until then.
+"""
+
+load("//tools/pkg:configure.bzl", "LIBC_HEADERS_TOOLCHAIN", "configure_package")
+load("//tools/pkg:defs.bzl", "installed_program")
+load("//tools/stage0:files.bzl", "tool_dir")
+load("//tools/verify:run_test.bzl", "program_output_test")
+
+package(
+    default_visibility = ["//visibility:public"],
+)
+
+configure_package(
+    name = "gawk_dist",
+    tarball = "@gawk-latest-src//file",
+    prefix = "gawk-5.3.2",
+    libc_headers = LIBC_HEADERS_TOOLCHAIN,
+    configure_flags = [
+        "--build=x86_64-unknown-linux-gnu",
+        "--host=x86_64-unknown-linux-gnu",
+        "--disable-dependency-tracking",
+        "--disable-nls",
+        # Extensions are loaded at run time, and there is no dynamic loader.
+        "--disable-extensions",
+    ],
+    exports = [
+        "AR=\"tcc -ar\"",
+        "RANLIB=true",
+        "LD=tcc",
+    ],
+    # gawk's own configure comes from a modern autoconf too, so the old awk
+    # has to carry its replacement through its build, and a sed that gets the
+    # config.status substitution script right has to be on PATH ahead of the
+    # bootstrap one. That is the step still missing; see
+    # tools/pkg/gnused/latest.
+    tools = [
+        "//tools/pkg/gawk:bin",
+        "//tools/pkg/gnused/latest:bin",
+    ],
+    tags = ["manual"],
+)
+
+installed_program(
+    name = "gawk",
+    package = ":gawk_dist",
+    program = "gawk",
+    tags = ["manual"],
+)
+
+tool_dir(
+    name = "bin",
+    tools = {
+        "gawk": ":gawk",
+        "awk": ":gawk",
+    },
+    tags = ["manual"],
+)
+
+program_output_test(
+    name = "gawk_field_test",
+    program = ":gawk",
+    arguments = ["'{ print $2 }'"],
+    stdin = "alpha beta gamma",
+    expected_output = "beta",
+    tags = ["manual"],
+)
+
+# The construct 3.0.6 could not parse: a string assignment continued onto the
+# next line, which is what autoconf's subs.awk is made of.
+program_output_test(
+    name = "gawk_continuation_test",
+    program = ":gawk",
+    arguments = ["'BEGIN { S[\"key\"]=\\\n\"value\"; print S[\"key\"] }'"],
+    expected_output = "value",
+    tags = ["manual"],
+)

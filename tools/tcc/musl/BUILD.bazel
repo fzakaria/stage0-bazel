@@ -32,7 +32,12 @@ DEFINES = [
     "TCC_TARGET_X86_64=1",
     "CONFIG_TCCDIR=\\\"\\\"",
     "CONFIG_TCC_CRTPREFIX=\\\"{B}\\\"",
-    "CONFIG_TCC_SYSINCLUDEPATHS=\\\"{B}/include\\\"",
+    # musl's headers, relative to the -B the compiler is given. They are a
+    # *system* include path rather than a -I one, which matters: -I is
+    # searched first, so a package shipping its own replacement headers --
+    # anything using gnulib -- still gets its own regex.h and stdint.h ahead
+    # of musl's. Passing them as -I instead would silently invert that.
+    "CONFIG_TCC_SYSINCLUDEPATHS=\\\"{B}/../include\\\"",
     "CONFIG_TCC_LIBPATHS=\\\"{B}\\\"",
     "CONFIG_TCC_ELFINTERP=\\\"/musl/loader\\\"",
     "CONFIG_TCC_PREDEFS=1",

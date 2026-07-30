@@ -1,0 +1,94 @@
+"""bash 5.3, built by bash 2.05b.
+
+2.05b is from 2002 and autoconf is now 2.72. The shell it emits is beyond the
+older one in ways that only show up inside `eval`:
+
+    ./configure: eval: line 1: unexpected EOF while looking for matching `''
+
+so every configure past this point needs a current shell. 2.05b's job was to
+get from kaem to here, and this is the last thing it builds.
+
+NOT REACHED YET: this needs the sed in tools/pkg/gnused/latest, which
+builds but is miscompiled -- see that package. Tagged manual until then.
+"""
+
+load("//tools/pkg:configure.bzl", "DECOMPRESS_GNU", "LIBC_HEADERS_TOOLCHAIN", "configure_package")
+load("//tools/pkg:defs.bzl", "installed_program")
+load("//tools/stage0:files.bzl", "tool_dir")
+load("//tools/verify:run_test.bzl", "program_output_test")
+
+package(
+    default_visibility = ["//visibility:public"],
+)
+
+PATCHES = [
+    # mksignames writes its generated file without flushing, and the build
+    # reads it back straight away.
+    "patches/mksignames-flush.patch",
+]
+
+configure_package(
+    name = "bash_dist",
+    tarball = "@bash-latest-src//file",
+    prefix = "bash-5.3",
+    libc_headers = LIBC_HEADERS_TOOLCHAIN,
+    # mescc-tools-extra's inflate cannot read this tarball: it stops with
+    # "puff() failed with return code -2".
+    decompressor = DECOMPRESS_GNU,
+    patches = ["tools/pkg/bash/latest/" + patch for patch in PATCHES],
+    patch_labels = PATCHES,
+    configure_flags = [
+        "--build=x86_64-unknown-linux-gnu",
+        "--host=x86_64-unknown-linux-gnu",
+        "--disable-dependency-tracking",
+        "--disable-nls",
+        # bash's bundled malloc uses assembly and layout assumptions that do
+        # not survive this compiler; musl's is fine.
+        "--without-bash-malloc",
+    ],
+    exports = [
+        "AR=\"tcc -ar\"",
+        "RANLIB=true",
+        "LD=tcc",
+    ],
+    # A sed that gets autoconf's config.status substitution script right has
+    # to come ahead of the bootstrap one; see tools/pkg/gnused/latest.
+    tools = ["//tools/pkg/gnused/latest:bin"],
+    tags = ["manual"],
+)
+
+installed_program(
+    name = "bash",
+    package = ":bash_dist",
+    program = "bash",
+    tags = ["manual"],
+)
+
+# Later packages call the shell as `sh` as well as `bash`; upstream installs a
+# symlink for it, and naming the same program twice does the same job.
+tool_dir(
+    name = "bin",
+    tools = {
+        "bash": ":bash",
+        "sh": ":bash",
+    },
+    tags = ["manual"],
+)
+
+program_output_test(
+    name = "bash_test",
+    program = ":bash",
+    arguments = ["-c", "'echo shell works'"],
+    expected_output = "shell works",
+    tags = ["manual"],
+)
+
+# The construct 2.05b could not parse: a single-quoted string reaching eval
+# through one level of expansion, which is how autoconf writes config.status.
+program_output_test(
+    name = "bash_eval_quoting_test",
+    program = ":bash",
+    arguments = ["-c", "'v=\\$\\'\\\\r\\'; eval x=\\'ok\\'; echo $x'"],
+    expected_output = "ok",
+    tags = ["manual"],
+)

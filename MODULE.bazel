@@ -179,6 +179,34 @@ http_file(
     downloaded_file_path = "gawk-3.0.6.tar.gz",
 )
 
+# bash 5.3. autoconf 2.72 emits shell that bash 2.05b mis-parses inside eval,
+# so the older shell can bootstrap this one and little else.
+http_file(
+    name = "bash-latest-src",
+    sha256 = "0d5cd86965f869a26cf64f4b71be7b96f90a3ba8b3d74e27e8e9d9d5550f31ba",
+    url = "https://mirror.team-cymru.com/gnu/bash/bash-5.3.tar.gz",
+    downloaded_file_path = "bash-5.3.tar.gz",
+)
+
+# GNU sed 4.2. The sed script autoconf uses to write config.status is beyond
+# 4.0.9, which silently drops the value half of each substitution.
+http_file(
+    name = "gnused-latest-src",
+    sha256 = "db45cd63fd010e650537d65d5dfce7689a652745236606e5e5c782937267d983",
+    url = "https://mirror.team-cymru.com/gnu/sed/sed-4.2.tar.gz",
+    downloaded_file_path = "sed-4.2.tar.gz",
+)
+
+# GNU awk 5.3.2. binutils comes from a modern autoconf whose subs.awk splits
+# string assignments across lines, which 3.0.6 cannot parse; this is the awk
+# that can. It is built by the older one.
+http_file(
+    name = "gawk-latest-src",
+    sha256 = "8639a1a88fb411a1be02663739d03e902a6d313b5c6fe024d0bfeb3341a19a11",
+    url = "https://mirror.team-cymru.com/gnu/gawk/gawk-5.3.2.tar.gz",
+    downloaded_file_path = "gawk-5.3.2.tar.gz",
+)
+
 # GNU binutils. The assembler and linker GCC needs; tinycc has its own of
 # both, but GCC will not use them.
 http_file(

@@ -1,0 +1,91 @@
+"""GNU sed 4.2. NOT WORKING YET -- it builds, and it is miscompiled.
+
+sed 4.2 compiles and links cleanly with the musl tinycc, and then gets
+regular expressions wrong. The whole-line match returns empty:
+
+    $ echo abcdef | sed 's/.*/[&]/'
+    []abcdef                          # should be [abcdef]
+
+which makes it useless for exactly the job it was built for -- autoconf's
+config.status is written by a sed script whose every rule depends on `&`.
+
+Note what this rules out. sed 4.0.9, built earlier against mes-libc, gets
+the same expression right:
+
+    $ echo abcdef | sed 's/.*/[&]/'
+    [abcdef]
+
+so the fault is not the version. It is this build: something in the way
+tinycc compiles gnulib's regex engine, which is also the part that had to be
+rescued from mes-libc header shadowing to compile at all. The offset types in
+gnulib's regex.h (regoff_t, __re_idx_t) switch width on _REGEX_LARGE_OFFSETS,
+and a disagreement about their size between translation units would produce
+exactly this.
+
+Until that is understood, every target here is tagged manual so a plain
+`bazel build //...` does not depend on a wrong answer.
+"""
+
+load("//tools/pkg:configure.bzl", "LIBC_HEADERS_TOOLCHAIN", "configure_package")
+load("//tools/pkg:defs.bzl", "installed_program")
+load("//tools/stage0:files.bzl", "tool_dir")
+load("//tools/verify:run_test.bzl", "program_output_test")
+
+package(
+    default_visibility = ["//visibility:public"],
+)
+
+configure_package(
+    name = "gnused_dist",
+    tarball = "@gnused-latest-src//file",
+    prefix = "sed-4.2",
+    libc_headers = LIBC_HEADERS_TOOLCHAIN,
+    configure_flags = [
+        "--build=x86_64-unknown-linux-gnu",
+        "--host=x86_64-unknown-linux-gnu",
+        "--disable-shared",
+        "--disable-nls",
+        "--disable-dependency-tracking",
+    ],
+    exports = [
+        "AR=\"tcc -ar\"",
+        "RANLIB=true",
+        "LD=tcc",
+    ],
+    make_flags = ["AR=\"tcc -ar\""],
+    tools = ["//tools/pkg/gawk:bin"],
+    tags = ["manual"],
+)
+
+installed_program(
+    name = "sed",
+    package = ":gnused_dist",
+    program = "sed",
+    tags = ["manual"],
+)
+
+tool_dir(
+    name = "bin",
+    tools = {"sed": ":sed"},
+    tags = ["manual"],
+)
+
+program_output_test(
+    name = "gnused_substitute_test",
+    program = ":sed",
+    arguments = ["-e", "'s/before/after/'"],
+    stdin = "a line that says before",
+    expected_output = "a line that says after",
+    tags = ["manual"],
+)
+
+# The shape of the script autoconf uses to write config.status: append to
+# hold space, then print the key and the value as two lines.
+program_output_test(
+    name = "gnused_hold_space_test",
+    program = ":sed",
+    arguments = ["-n", "'h; s/^/S[\"/; s/$/\"]=/; p; g; s/^/\"/; s/$/\"/; p'"],
+    stdin = "value",
+    expected_output = "S[\"value\"]=\n\"value\"",
+    tags = ["manual"],
+)

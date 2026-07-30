@@ -30,6 +30,21 @@ _DECOMPRESSORS = {
     "xz": "unxz",
 }
 
+# Which program unpacks a .gz.
+#
+# mescc-tools-extra's ungz is a minimal inflate built on puff, and it does not
+# handle every stream a modern gzip produces -- bash 5.3's tarball makes it
+# fail with "puff() failed with return code -2". Once this repository has
+# built GNU gzip, that is the better answer; until then ungz is the only one
+# there is, which is why gzip itself has to use it.
+DECOMPRESS_SEED = "seed"
+DECOMPRESS_GNU = "gnu"
+
+_DECOMPRESSOR_KINDS = [
+    DECOMPRESS_SEED,
+    DECOMPRESS_GNU,
+]
+
 # Which C library's headers a package is compiled against.
 #
 # Everything up to now borrows mes-libc's, because it has no other. A C
@@ -78,6 +93,12 @@ def _driver_lines(prefix, configure_flags, make_flags, build_targets, install_ta
         "# built, never by the host's.",
         "set -eu",
         "",
+        "# Every PATH entry here is relative to the execroot, and this script",
+        "# changes directory. bash remembers where it found a program and",
+        "# reuses that path, so a command run before the cd would be looked",
+        "# for at a stale relative path afterwards and fail with ENOENT.",
+        "set +h",
+        "",
         "# Every path the action supplies is relative to the execroot, and",
         "# configure runs one directory down. Absolute paths survive the cd.",
         "root=\"$PWD\"",
@@ -90,6 +111,14 @@ def _driver_lines(prefix, configure_flags, make_flags, build_targets, install_ta
         "export CONFIG_SHELL=\"$bash_path\"",
         "export SHELL=\"$bash_path\"",
         "",
+        "# A shell writes here-documents to a temporary file, and the action",
+        "# runs with an emptied environment, so there is no TMPDIR to write",
+        "# them to. autoconf builds config.status out of very large here-",
+        "# documents; when they cannot be written it reports only",
+        "# \"could not make ./config.status\" and stops.",
+        "export TMPDIR=\"$root/tmp\"",
+        "mkdir -p \"$TMPDIR\"",
+        "",
         "# tinycc knows where its own headers live only because those paths",
         "# were baked in when it was built; they still have to be named.",
         "# tcc_include holds the compiler's own headers -- stdarg.h, stddef.h",
@@ -99,8 +128,11 @@ def _driver_lines(prefix, configure_flags, make_flags, build_targets, install_ta
             [
                 "export CC=\"tcc",
             ] + ([
+                # No -I for the C library here. The compiler was built
+                # knowing where musl's headers live, and finds them on its
+                # system include path -- which is searched after -I, so a
+                # package that ships gnulib replacements still gets its own.
                 "-B $root/$toolchain/lib",
-                "-I $root/$toolchain/include",
             ] if libc_headers == LIBC_HEADERS_TOOLCHAIN else [
                 "-B $root/$tcc_libs",
                 "-I $root/$tcc_include",
@@ -121,17 +153,14 @@ def _driver_lines(prefix, configure_flags, make_flags, build_targets, install_ta
         "cd " + prefix,
         "",
         "# untar does not preserve the executable bit, and a configure script",
-        "# runs its helpers -- missing, install-sh, config.sub, and the",
-        "# configure scripts of subdirectories -- by path rather than through",
-        "# a shell. Anything meant to be run has to get that bit back.",
-        "#",
-        "# The walk is a shell function because findutils does not exist yet",
-        "# at this point in the bootstrap.",
-        "restore_executable_bits () {",
+        "# needs it: it runs missing, install-sh, config.sub and the configure",
+        "# scripts of subdirectories by path, not through a shell. The walk is",
+        "# a shell function because findutils does not exist yet here.",
+        "prepare_source_tree () {",
         "  local entry",
         "  for entry in \"$1\"/*; do",
         "    if [ -d \"$entry\" ]; then",
-        "      restore_executable_bits \"$entry\"",
+        "      prepare_source_tree \"$entry\"",
         "    elif [ -f \"$entry\" ]; then",
         "      case \"$entry\" in",
         "        */configure | *.sh | */missing | */install-sh | */mkinstalldirs \\",
@@ -143,7 +172,26 @@ def _driver_lines(prefix, configure_flags, make_flags, build_targets, install_ta
         "    fi",
         "  done",
         "}",
-        "restore_executable_bits .",
+        "prepare_source_tree .",
+        "",
+        "# untar also stamps every file with the moment of extraction rather",
+        "# than with what the archive recorded, so a file created immediately",
+        "# afterwards can share their timestamp. autoconf's sanity check",
+        "# compares its own probe against the distributed files at a",
+        "# resolution of one second and stops if the probe is not strictly",
+        "# newer: \"newly created file is older than distributed files\".",
+        "#",
+        "# Waiting for the clock to move past that second is enough. It is",
+        "# done with bash's own -nt rather than with sleep or touch -t,",
+        "# because both of those are broken in the mes-libc coreutils this",
+        "# stage still uses -- sleep cannot read the realtime clock and",
+        "# touch -t reports success without changing anything.",
+        "probe=.stage0-timestamp-probe",
+        ": > \"$probe\"",
+        "while [ ! \"$probe\" -nt configure ]; do",
+        "  : > \"$probe\"",
+        "done",
+        "rm -f \"$probe\"",
         "",
     ]
 
@@ -192,6 +240,7 @@ def configure_package(
         patch_strip = 1,
         srcs = [],
         compression = "gz",
+        decompressor = DECOMPRESS_SEED,
         tcc = "//tools/tcc/current:tcc",
         tcc_libs = "//tools/tcc/current:tcc_libs",
         tcc_include = "//tools/tcc/current:src_include_dir",
@@ -225,6 +274,9 @@ def configure_package(
         patch_strip: The -p level the patches are written against.
         srcs: Additional files the build reads.
         compression: Archive compression: "gz", "bz2" or "xz".
+        decompressor: DECOMPRESS_SEED for mescc-tools-extra's inflate, or
+            DECOMPRESS_GNU for the gzip this repository built. The seed's
+            cannot read every stream a modern gzip writes.
         tcc: The tinycc to build with.
         tcc_libs: That compiler's library directory.
         tcc_include: That compiler's own include directory.
@@ -234,6 +286,8 @@ def configure_package(
     """
     if compression not in _DECOMPRESSORS:
         fail("unknown compression %s" % compression)
+    if decompressor not in _DECOMPRESSOR_KINDS:
+        fail("decompressor must be one of %s, got %s" % (_DECOMPRESSOR_KINDS, decompressor))
     if libc_headers not in _LIBC_HEADERS:
         fail("libc_headers must be one of %s, got %s" % (_LIBC_HEADERS, libc_headers))
 
@@ -257,12 +311,25 @@ def configure_package(
     # kaem still does the unpacking and patching. It cannot cd, which is
     # exactly why the driver above exists, but it can decompress and patch
     # without any of this mattering.
-    lines = [
-        "# Unpack.",
-        "%s --file ${tarball} --output source.tar" % _DECOMPRESSORS[compression],
-        "untar --file source.tar",
-        "",
-    ]
+    if decompressor == DECOMPRESS_GNU:
+        # gzip decides the output name by dropping the suffix, which is what
+        # makes this expressible in kaem: there is no redirection here, so a
+        # decompressor that writes to stdout would be unusable.
+        lines = [
+            "# Unpack, with the gzip this repository built rather than the",
+            "# seed's minimal inflate.",
+            "cp ${tarball} source.tar.gz",
+            "gzip -d source.tar.gz",
+            "untar --file source.tar",
+            "",
+        ]
+    else:
+        lines = [
+            "# Unpack.",
+            "%s --file ${tarball} --output source.tar" % _DECOMPRESSORS[compression],
+            "untar --file source.tar",
+            "",
+        ]
 
     if patches:
         lines.append("# Patch, relative to the unpacked tree.")
@@ -315,8 +382,14 @@ def configure_package(
         # mescc-tools-extra, whose rm, cp and mkdir are single-purpose
         # stand-ins that take no options -- `rm -f` reaches the wrong one
         # otherwise and tries to delete a file called "-f".
+        # A caller's extra tools come before the defaults so that a newer
+        # build of something can replace the bootstrap one: sed 4.2 has to win
+        # over sed 4.0.9 for any package whose configure autoconf generated.
         tools = [
             name + "_tcc",
+        ] + tools + ([
+            "//tools/pkg/gzip:bin",
+        ] if decompressor == DECOMPRESS_GNU else []) + [
             "//tools/pkg/coreutils:bin",
             "//tools/pkg/bash:bin",
             "//tools/pkg/gnugrep:bin",
@@ -324,6 +397,6 @@ def configure_package(
             "//tools/pkg/gnupatch:bin",
             "//tools/pkg/gnused:bin",
             "//tools/mescc-tools-extra:bin",
-        ] + tools,
+        ],
         **kwargs
     )
