@@ -1,0 +1,63 @@
+"""Stable labels for the binaries this bootstrap produces.
+
+Downstream modules should depend on these aliases rather than on the phase
+packages: which phase a tool comes from is an implementation detail of the
+bootstrap and moves as the chain grows.
+"""
+
+package(
+    default_visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "hex2",
+    actual = "//tools/stage0/phase10:hex2",
+)
+
+alias(
+    name = "M1",
+    actual = "//tools/stage0/phase9:M1",
+)
+
+alias(
+    name = "blood-elf",
+    actual = "//tools/stage0/phase13:blood-elf",
+)
+
+alias(
+    name = "get_machine",
+    actual = "//tools/stage0/phase14:get_machine",
+)
+
+alias(
+    name = "M2-Planet",
+    actual = "//tools/stage0/phase15:M2-Planet",
+)
+
+alias(
+    name = "M2-Mesoplanet",
+    actual = "//tools/stage0/phase12:M2-Mesoplanet",
+)
+
+alias(
+    name = "kaem",
+    actual = "//tools/stage0/phase11:kaem",
+)
+
+alias(
+    name = "mes",
+    actual = "//tools/mes:mes",
+)
+
+# The mescc toolchain to pass to mescc_object, mescc_library and mescc_binary.
+alias(
+    name = "mescc",
+    actual = "//tools/mes:mescc",
+)
+
+# Building this asserts that nothing in the bootstrap graph runs a program the
+# graph did not build. Run it in CI.
+alias(
+    name = "trust-report",
+    actual = "//tools/verify:no_native_toolchain",
+)
