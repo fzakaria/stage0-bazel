@@ -17,8 +17,8 @@ the host participates, and that claim is checked rather than asserted; see
 | M2-Planet, M1, blood-elf, kaem, M2-Mesoplanet, get_machine (phases 6–15) | ✅ |
 | GNU Mes (Scheme interpreter) | ✅ boots and evaluates |
 | mescc (C99 compiler) and the mes C library | ✅ compiles and links working programs |
-| tinycc (`tcc-mes`, i386 target) | ✅ builds, runs, compiles C to i386 objects |
-| tinycc hosted natively on x86-64 | ❌ blocked, see below |
+| tinycc (`tcc-mes`), native x86-64 | ✅ builds, runs, compiles C to x86-64 objects |
+| tinycc self-rebuild chain (boot0…bootstrappable) | ❌ next step |
 | binutils, GCC 4.7 (first with usable C++), modern GCC | ❌ not started |
 
 **There is no C or C++ `cc_toolchain` yet, and this module cannot build
@@ -42,17 +42,12 @@ $ bazel run //tools/mes/tests:hello
 hello from mescc
 
 $ bazel run //:tcc-mes -- -v
-tcc version 0.9.27 (i386 Linux)
+tcc version 0.9.28-mes (x86_64 Linux)
 ```
 
 Those binaries are statically linked x86-64 ELF executables whose only
-untrusted input is the hex0 seed.
-
-`tcc-mes` targets i386 while running as x86-64, which makes it a cross
-compiler. That is not a shortcut: the 64-bit code paths in tinycc reach
-`Elf64_*` typedefs that mescc's C parser cannot handle, and i386 is the target
-upstream and live-bootstrap bootstrap through. Moving the chain to a natively
-hosted x86-64 tcc is a later step.
+untrusted input is the hex0 seed, and `tcc-mes` emits x86-64 objects — it is a
+native compiler, not a cross compiler.
 
 ## Building
 
@@ -144,21 +139,29 @@ The remaining path to C++ follows
 [live-bootstrap](https://github.com/fosslinux/live-bootstrap), which is the
 reference for how far this has to go:
 
-1. **A natively hosted tcc.** `tcc-mes` currently emits i386 code. Either
-   build an i386 mes so the whole chain is 32-bit as live-bootstrap does, or
-   use the i386 tcc to build an x86-64 tcc.
-2. **tinycc 0.9.27**, rebuilt several times against musl.
-3. **The shell-script problem.** Everything past tinycc — binutils, GCC — is
-   built by `./configure && make`. live-bootstrap solves this by bootstrapping
-   `kaem`, then a real shell, `make`, `sed`, `tar` and the rest. `kaem` is
-   already built here (phase 11), but each of those packages is its own port.
-4. **GCC 4.0.4 → 4.7.4.** 4.7.4 is the first release whose C++ front end is
-   usable for building later GCCs.
-5. **Modern GCC**, and only then a `cc_toolchain` that can honestly claim C++
-   support.
+1. **Rebuild tinycc with itself.** nixpkgs walks five stages
+   (`boot0` … `bootstrappable`), each enabling more of the language —
+   bitfields, then floats, then `setjmp` — and recompiling the mes C library
+   with the previous stage's compiler each time. This needs the mes libc
+   *amalgamations* (`lib/libc.c`, `lib/crt1.c`, …), which are plain
+   concatenations of the sources already built here, so `catm` produces them.
+2. **A `kaem_run` rule.** Everything past this point is built by
+   `./configure && make`. nixpkgs handles it with one primitive,
+   `kaem.runCommand`: run a script under the bootstrapped `kaem` shell with
+   declared inputs and a directory output. Bazel can express exactly that with
+   a `TreeArtifact` output; `kaem` is already built here (phase 11), and it
+   needs `mescc-tools-extra` (`ungz`, `untar`, `cp`, `mkdir`, `replace`)
+   alongside it. This rule is the single largest piece of remaining
+   infrastructure — once it exists the rest is transcription.
+3. **The utility packages**, in nixpkgs' order: musl, gnumake, gnused,
+   gnugrep, gawk, gnutar, gzip, bzip2, gnupatch, diffutils, findutils,
+   coreutils, heirloom, bash, binutils, bison, gnum4, xz, zlib.
+4. **GCC 4.6 (C, then C++) → GCC 10.4**, with GMP, MPFR and MPC.
 
-Steps 3 and 4 are the bulk of the work; this is a project measured in months,
-not an afternoon.
+The 29-package list, versions, patches and configure flags are all pinned in
+[nixpkgs' minimal-bootstrap](https://github.com/NixOS/nixpkgs/tree/master/pkgs/os-specific/linux/minimal-bootstrap),
+so this is transcription plus debugging rather than research. Step 2 is the
+part that is genuinely new work in Bazel.
 
 ## References
 

@@ -68,9 +68,9 @@ http_archive(
 http_archive(
     name = "tinycc",
     build_file = "//third_party:tinycc.BUILD",
-    sha256 = "313ebbde827e5b0c61a7dd553c5729b151507b42285cc9740e0f4fb6607a0442",
-    url = "https://gitlab.com/janneke/tinycc/-/archive/0bbd2af306a660fe19ad660034179ba973ca0449/tinycc-0bbd2af306a660fe19ad660034179ba973ca0449.tar.gz",
-    strip_prefix = "tinycc-0bbd2af306a660fe19ad660034179ba973ca0449",
+    sha256 = "d7a2411890130163fe94fca53a2dfe9688e976fd12479a6acb1395d8f895c740",
+    url = "https://gitlab.com/janneke/tinycc/-/archive/ea3900f6d5e71776c5cfabcabee317652e3a19ee/tinycc-ea3900f6d5e71776c5cfabcabee317652e3a19ee.tar.gz",
+    strip_prefix = "tinycc-ea3900f6d5e71776c5cfabcabee317652e3a19ee",
 )
 
 # The C99 parser mescc is written against. Mes ships only two nyacc compat

@@ -3,13 +3,14 @@
 This is the step that lets the bootstrap leave Scheme behind: tcc-mes is a
 real C compiler, written in C, that mescc is just capable enough to compile.
 
-The flags and the file list come from upstream's bootstrap.sh. Most of the
-definitions are paths baked into the compiler for its own later use rather
-than anything needed to build it; CONFIG_TCC_* and TCC_TARGET_* are the ones
-that change what tcc compiles into.
+The recipe follows nixpkgs' minimal-bootstrap tinycc/bootstrappable.nix, which
+in turn follows live-bootstrap's tcc-0.9.26 step. Four source edits are needed
+because mescc cannot compile the code as written; they are applied by Bazel's
+own template expansion, since neither `patch` nor `sed` exists yet.
 """
 
 load("@bazel_skylib//rules:write_file.bzl", "write_file")
+load("//tools/stage0:files.bzl", "patched_tree")
 load("//tools/stage0:mescc.bzl", "mescc_binary", "mescc_object")
 load("//tools/verify:run_test.bzl", "program_output_test")
 
@@ -18,98 +19,105 @@ package(
 )
 
 # tcc.h includes "config.h" unconditionally. Upstream's ./configure writes it;
-# these are the entries configure emits that are not already supplied as -D
-# flags below. GCC_MAJOR and GCC_MINOR describe the compiler tcc claims
-# compatibility with, not the one building it.
+# every value it would supply is passed as a -D flag below, so an empty file is
+# enough. Upstream's own bootstrap does the same with `catm config.h`.
 write_file(
     name = "config_h",
-    out = "include/config.h",
-    content = [
-        "/* Generated in place of tinycc's ./configure output. */",
-        "#define TCC_VERSION \"0.9.27\"",
-        "#define GCC_MAJOR 4",
-        "#define GCC_MINOR 3",
-    ],
+    out = "src/config.h",
+    content = [""],
 )
 
-# Definitions upstream's bootstrap.sh passes when compiling tinycc under
-# mescc. BOOTSTRAP=1 selects the reduced code paths mescc can handle; the
-# CONFIG_TCC_* values are the paths the resulting compiler will search.
+# Edits mescc needs to get through the x86-64 code paths, taken verbatim from
+# nixpkgs' minimal-bootstrap. Each is a literal string replacement.
+TINYCC_PATCHES = {
+    # mes libc uses max_align_t, which this tinycc's stddef.h does not define.
+    "include/stddef.h": [
+        "void *alloca",
+        "typedef union { long double ld; long long ll; } max_align_t;\nvoid *alloca",
+    ],
+    "x86_64-gen.c": [
+        # mescc 0.27 has neither working VLAs nor alloca, so this allocation
+        # moves to the heap and is deliberately leaked.
+        "char _onstack[nb_args], *onstack = _onstack;",
+        "char *onstack = tcc_malloc(nb_args);",
+        # mescc's libc has no abort.
+        "abort();",
+        "/* abort(); */",
+        # Works around a mescc code generation bug for the compound shift.
+        "g(vtop->c.i & (ll ? 63 : 31));",
+        "if (ll) g(vtop->c.i & 63); else g(vtop->c.i & 31);",
+    ],
+    # tinycc only relocates the PLT when linking dynamically, but the x86-64
+    # backend emits one regardless, so its got references need relocating too.
+    "tccelf.c": [
+        "fill_got(s1);",
+        "{ fill_got(s1); relocate_plt(s1); }",
+    ],
+}
+
+patched_tree(
+    name = "src",
+    srcs = ["@tinycc//:tree"],
+    prefix = "src",
+    substitutions = TINYCC_PATCHES,
+)
+
+# Definitions from nixpkgs' tinycc-boot-mes stage.
 #
-# ONE_SOURCE is deliberately absent. It would make tcc.c include the rest of
-# the compiler, which also turns on the `static inline` declarations that
-# mescc's parser rejects, so upstream compiles the units separately.
+# ONE_SOURCE makes tcc.c include the rest of the compiler, which is what lets
+# mescc see the whole program at once. It also turns ST_INLN into
+# `static inline`, which mescc's parser rejects, so `inline` is defined away --
+# the same trick mes uses for `const` in its own build.
+#
+# HAVE_LONG_LONG is what makes the 64-bit target work at all: without it
+# tinycc's Elf64_* typedefs never appear and mescc fails to parse their uses.
 TCC_DEFINES = [
     "BOOTSTRAP=1",
-    # mescc has no notion of `inline`, and tcc.h defines helpers as
-    # `static inline`. Defining the keyword away is what mes's own build does
-    # for `const`, and leaves plain static functions.
+    "ONE_SOURCE=1",
     "inline=",
-    # i386, not x86_64, even though mes and the resulting binary are 64-bit.
-    # The 64-bit code paths reach tinycc's Elf64_* typedefs, which mescc's C
-    # parser cannot handle; this is the target upstream and live-bootstrap
-    # bootstrap through. tcc-mes is therefore a cross compiler, and moving the
-    # chain to a native x86-64 tcc is a later step.
-    "TCC_TARGET_I386=1",
+    "HAVE_LONG_LONG=1",
+    "TCC_TARGET_X86_64=1",
     "CONFIG_TCCBOOT=1",
     "CONFIG_TCC_STATIC=1",
     "CONFIG_USE_LIBGCC=1",
     "TCC_MES_LIBC=1",
-    "CONFIG_TCCDIR=\"/usr/local/lib/tcc\"",
-    "CONFIG_TCC_CRTPREFIX=\"/usr/local/lib:.\"",
+    "CONFIG_TCC_LIBTCC1_MES=0",
+    "CONFIG_TCCDIR=\"\"",
+    "CONFIG_SYSROOT=\"\"",
+    "CONFIG_TCC_CRTPREFIX=\"{B}\"",
     "CONFIG_TCC_ELFINTERP=\"/mes/loader\"",
-    "CONFIG_TCC_LIBPATHS=\"/usr/local/lib:.\"",
-    "CONFIG_TCC_SYSINCLUDEPATHS=\"/usr/local/include\"",
-    "TCC_LIBGCC=\"/usr/local/lib/libc.a\"",
-    "TCC_LIBTCC1_MES=\"libtcc1-mes.a\"",
+    "CONFIG_TCC_LIBPATHS=\"{B}\"",
+    "TCC_LIBGCC=\"libc.a\"",
+    "TCC_LIBTCC1=\"libtcc1.a\"",
+    "TCC_VERSION=\"0.9.28-mes\"",
 ]
 
-# The translation units, in upstream's order. tcc.c is last because it is the
-# driver.
-TCC_SOURCES = [
-    "tccpp",
-    "tccgen",
-    "tccelf",
-    "tccrun",
-    "i386-gen",
-    "i386-link",
-    "i386-asm",
-    "tccasm",
-    "libtcc",
-    "tcc",
-]
-
-[
-    mescc_object(
-        name = name + "_o",
-        src = "@tinycc//:%s.c" % name,
-        hdrs = [
-            "@tinycc//:sources",
-            "@mes-m2//:headers",
-        ],
-        include_dir_markers = [":include/config.h"],
-        defines = TCC_DEFINES,
-        toolchain = "//tools/mes:mescc",
-    )
-    for name in TCC_SOURCES
-]
+mescc_object(
+    name = "tcc_o",
+    src = ":src",
+    main = "src/tcc.c",
+    hdrs = [
+        ":config_h",
+        "@mes-m2//:headers",
+    ],
+    defines = TCC_DEFINES,
+    toolchain = "//tools/mes:mescc",
+)
 
 # libc+tcc rather than plain libc: tinycc needs the floating point, printf and
-# setjmp support that only the larger variant provides.
+# setjmp support only the larger variant provides.
 mescc_binary(
     name = "tcc-mes",
-    objects = [":%s_o" % name for name in TCC_SOURCES],
+    objects = [":tcc_o"],
     libraries = ["c+tcc"],
     toolchain = "//tools/mes:mescc",
 )
 
-# tcc reports its own version and target, which is enough to prove the binary
-# runs and that its driver, preprocessor and option handling all work. That it
-# targets i386 while running as x86-64 is deliberate; see the comment on
-# TCC_TARGET_I386 above.
+# tcc reporting its own version proves the binary runs and that its driver,
+# preprocessor and option handling all work.
 program_output_test(
     name = "tcc_version_test",
     program = ":tcc-mes",
     arguments = ["-v"],
-    expected_output = "tcc version 0.9.27 (i386 Linux)",
+    expected_output = "tcc version 0.9.28-mes (x86_64 Linux)",
 )

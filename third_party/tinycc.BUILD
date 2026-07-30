@@ -14,3 +14,18 @@ filegroup(
     ]),
     visibility = ["//visibility:public"],
 )
+
+# tcc.c includes headers from include/ as well, and with ONE_SOURCE the whole
+# tree has to be staged together so relative includes resolve.
+filegroup(
+    name = "tree",
+    srcs = glob([
+        "*.c",
+        "*.h",
+        "*.def",
+        "include/**",
+        "lib/*.c",
+        "lib/*.S",
+    ]),
+    visibility = ["//visibility:public"],
+)

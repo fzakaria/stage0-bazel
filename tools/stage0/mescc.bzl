@@ -203,9 +203,35 @@ def _object_name(ctx):
     """
     return _ARCH_SUBDIR + "/" + ctx.label.name
 
+def _select_source(ctx):
+    """Picks the translation unit to compile out of the `src` attribute.
+
+    A staged source tree yields hundreds of files, only one of which is the
+    unit being compiled, so `main` names it. The rest are still inputs: with
+    ONE_SOURCE the compiler reads most of them.
+
+    Args:
+        ctx: The rule context.
+
+    Returns:
+        The File to pass to mescc.
+    """
+    files = ctx.files.src
+    if not ctx.attr.main:
+        if len(files) != 1:
+            fail("src produces %d files; set main to name the one to compile" % len(files))
+        return files[0]
+
+    suffix = "/" + ctx.attr.main
+    for f in files:
+        if f.path.endswith(suffix):
+            return f
+    fail("no file in src ends with %s" % suffix)
+
 def _mescc_object_impl(ctx):
     mescc_info = ctx.attr.toolchain[MesccInfo]
 
+    source = _select_source(ctx)
     stem = _object_name(ctx)
     obj = ctx.actions.declare_file(stem + ".o")
 
@@ -223,13 +249,13 @@ def _mescc_object_impl(ctx):
     for define in ctx.attr.defines:
         args.add("-D", define)
     args.add("-o", obj)
-    args.add(ctx.file.src)
+    args.add(source)
 
     ctx.actions.run(
         outputs = [obj, listing],
         inputs = _mescc_action_inputs(
             mescc_info,
-            [ctx.file.src] + ctx.files.hdrs + ctx.files.include_dir_markers,
+            ctx.files.src + ctx.files.hdrs + ctx.files.include_dir_markers,
         ),
         executable = mescc_info.mes.interpreter,
         arguments = [args],
@@ -243,7 +269,14 @@ def _mescc_object_impl(ctx):
 mescc_object = rule(
     implementation = _mescc_object_impl,
     attrs = {
-        "src": attr.label(allow_single_file = [".c"], mandatory = True),
+        "src": attr.label(
+            allow_files = True,
+            mandatory = True,
+            doc = "The C source, or a staged tree containing it alongside its includes.",
+        ),
+        "main": attr.string(
+            doc = "Path suffix naming the translation unit, when src yields more than one file.",
+        ),
         "hdrs": attr.label_list(allow_files = True, doc = "Headers the source includes."),
         "include_dir_markers": attr.label_list(
             allow_files = True,
