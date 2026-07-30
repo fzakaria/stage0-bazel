@@ -10,17 +10,25 @@ uses far more of libc than anything before it.
 
 The recipe and both patches are nixpkgs' minimal-bootstrap binutils.
 
-What is missing: configure runs to completion, but config.status cannot
-generate the makefiles. binutils 2.46 was produced by a modern autoconf,
-whose subs.awk splits string assignments across lines, and gawk 3.0.6 --
-the version the earlier utilities are built from -- rejects that:
+What is missing: configure runs to completion, then config.status cannot
+generate the makefiles. It fails on an awk error,
 
     gawk: subs.awk:8: S["LTLIBOBJS"]=
                                      ^ unexpected newline
 
-The fix is a newer gawk built against musl, which the musl tinycc should now
-be able to compile. Until then every target here is tagged manual so a plain
-`bazel build //...` does not trip over it.
+but the damage is upstream of awk: config.status already holds the key of
+each substitution with no value after the `=`, so awk is only reporting what
+sed left behind. autoconf builds that section with a sed script that branches
+through `t`, `b` and `:repl` labels, and the straight-line part of it is not
+the problem -- sed 4.0.9 handles the substitutions themselves exactly as a
+known-good sed does. The branching part is where to look next.
+
+Building a newer sed does not help yet: sed 4.2 compiles against musl and is
+then miscompiled, getting `s/.*/&/` wrong outright. See
+tools/pkg/gnused/latest.
+
+Every target here is tagged manual so a plain `bazel build //...` does not
+trip over it.
 """
 
 load("//tools/pkg:configure.bzl", "LIBC_HEADERS_TOOLCHAIN", "configure_package")
