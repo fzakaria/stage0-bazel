@@ -53,6 +53,29 @@ _PRINTF_SUBSTITUTIONS = {
     "va_arg8": "va_arg",
 }
 
+# _exit loads the syscall number into %rax and only then moves its argument
+# into %rdi. tinycc satisfies the "rm" constraint with %rax, so the argument
+# read is really `mov %rax,%rdi` and every program exits with the syscall
+# number -- 0x3c, 60 -- instead of its own status. Loading %rdi first is
+# correct whichever register the constraint picks.
+# The two asm lines, exactly as they appear in the source. Single quotes keep
+# the embedded double quotes readable; \\n is the two characters a C string
+# escape occupies in the file.
+_LOAD_RAX = '"mov     $"SYS_exit",%%rax\\n\\t"'
+
+_LOAD_RDI = '"mov     %0,%%rdi\\n\\t"'
+
+_SEPARATOR = "\n       "
+
+expand_template(
+    name = "exit_patched",
+    template = "@mes-m2//:lib/linux/x86_64-mes-gcc/_exit.c",
+    out = "patched/_exit.c",
+    substitutions = {
+        _LOAD_RAX + _SEPARATOR + _LOAD_RDI: _LOAD_RDI + _SEPARATOR + _LOAD_RAX,
+    },
+)
+
 [
     expand_template(
         name = name + "_patched",
@@ -72,7 +95,7 @@ LIBC_SOURCES = [
     "@mes-m2//:lib/mes/oputs.c",
     "@mes-m2//:lib/mes/globals.c",
     "@mes-m2//:lib/stdlib/exit.c",
-    "@mes-m2//:lib/linux/x86_64-mes-gcc/_exit.c",
+    ":patched/_exit.c",
     "@mes-m2//:lib/linux/x86_64-mes-gcc/_write.c",
     "@mes-m2//:lib/stdlib/puts.c",
     "@mes-m2//:lib/string/strlen.c",

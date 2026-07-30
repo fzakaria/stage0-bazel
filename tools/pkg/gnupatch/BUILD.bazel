@@ -85,14 +85,10 @@ tool_dir(
     tools = {"patch": ":patch"},
 )
 
-# patch reports its version with exit status 60 rather than 0 when linked
-# against mes-libc, so the check lives here rather than in the build script,
-# where kaem --strict would treat it as a failure.
 program_output_test(
     name = "gnupatch_version_test",
     program = ":patch",
     arguments = ["--version"],
-    expected_exit_code = 60,
     expected_output = """patch 2.5.9
 Copyright (C) 1988 Larry Wall
 Copyright (C) 2003 Free Software Foundation, Inc.
