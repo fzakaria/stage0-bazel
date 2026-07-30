@@ -1,29 +1,40 @@
-"""GNU sed 4.2. NOT WORKING YET -- it builds, and it is miscompiled.
+"""GNU sed 4.2. STILL NOT USABLE -- two bugs found, one fixed.
 
-sed 4.2 compiles and links cleanly with the musl tinycc, and then gets
-regular expressions wrong. The whole-line match returns empty:
+Both seds get something wrong that the other gets right, which is why this
+package exists at all.
 
-    $ echo abcdef | sed 's/.*/[&]/'
-    []abcdef                          # should be [abcdef]
+sed 4.0.9 cannot run the `N` command when its input is stdin. Given a script
+that joins pairs of lines it emits the first and stops:
 
-which makes it useless for exactly the job it was built for -- autoconf's
-config.status is written by a sed script whose every rule depends on `&`.
+    $ sed -f join.sed < pairs.txt
+    k1=
 
-Note what this rules out. sed 4.0.9, built earlier against mes-libc, gets
-the same expression right:
+Reading the same file by name works. autoconf pipes into sed constantly --
+config.status is assembled by one sed piped into another -- so this quietly
+truncated generated makefiles, and surfaced much later as an awk parse error
+on the half-written result. sed 4.2 does this correctly.
 
-    $ echo abcdef | sed 's/.*/[&]/'
+sed 4.2's own fault is in matching. gnulib's regex has a separate multibyte
+matcher, switched on by RE_ENABLE_I18N, and tinycc miscompiles it: `.*` came
+back empty for every input. Turning that path off (the two ac_cv_func
+settings below) fixes the multibyte matcher's case, and uncovers a second,
+narrower one underneath:
+
+    $ echo abcdef | sed 's/.*/[&]/'      # correct
     [abcdef]
+    $ echo ABC | sed 's/.*/[&]/'         # wrong
+    []ABC
+    $ echo ABC | sed 's/.*C$/X/'         # wrong: .* matched nothing
+    ABX
 
-so the fault is not the version. It is this build: something in the way
-tinycc compiles gnulib's regex engine, which is also the part that had to be
-rescued from mes-libc header shadowing to compile at all. The offset types in
-gnulib's regex.h (regoff_t, __re_idx_t) switch width on _REGEX_LARGE_OFFSETS,
-and a disagreement about their size between translation units would produce
-exactly this.
+`.` matches lowercase and not uppercase. That points at the bitset gnulib
+builds for a character class -- bitset_set and bitset_contain are shifts of a
+64-bit word by a bit index -- rather than at anything sed does itself. sed
+4.0.9's older regex, compiled by the same tinycc, gets all of these right, so
+this is specific to the newer engine.
 
-Until that is understood, every target here is tagged manual so a plain
-`bazel build //...` does not depend on a wrong answer.
+Until that is understood, every target here is tagged manual. The tests below
+record exactly what works and what does not.
 """
 
 load("//tools/pkg:configure.bzl", "LIBC_HEADERS_TOOLCHAIN", "configure_package")
@@ -51,10 +62,17 @@ configure_package(
         "AR=\"tcc -ar\"",
         "RANLIB=true",
         "LD=tcc",
+        # Keep gnulib's regex on its single-byte path. RE_ENABLE_I18N turns
+        # on a separate multibyte matcher, and that is the half tinycc gets
+        # wrong here; sed 4.0.9, whose regex works, was built where none of
+        # this existed. sed itself still needs wchar.h, so the switch is made
+        # on the regex engine's own condition rather than by hiding headers.
+        "ac_cv_func_iswctype=no",
+        "ac_cv_func_wcscoll=no",
     ],
     make_flags = ["AR=\"tcc -ar\""],
-    tools = ["//tools/pkg/gawk:bin"],
     tags = ["manual"],
+    tools = ["//tools/pkg/gawk:bin"],
 )
 
 installed_program(
@@ -79,13 +97,26 @@ program_output_test(
     tags = ["manual"],
 )
 
-# The shape of the script autoconf uses to write config.status: append to
-# hold space, then print the key and the value as two lines.
+# The two things this build had to get right: a whole-line match, and the
+# N command reading from stdin. Both are what autoconf's config.status
+# pipeline depends on.
+# Lowercase works; the uppercase form below does not, and is the open bug.
 program_output_test(
-    name = "gnused_hold_space_test",
+    name = "gnused_whole_line_match_test",
     program = ":sed",
-    arguments = ["-n", "'h; s/^/S[\"/; s/$/\"]=/; p; g; s/^/\"/; s/$/\"/; p'"],
-    stdin = "value",
-    expected_output = "S[\"value\"]=\n\"value\"",
+    arguments = ["'s/.*/[&]/'"],
+    stdin = "abcdef",
+    expected_output = "[abcdef]",
+    tags = ["manual"],
+)
+
+# N reading from stdin, which 4.0.9 could not do. The script is autoconf's:
+# a line not starting with a quote absorbs the line after it.
+program_output_test(
+    name = "gnused_next_line_from_stdin_test",
+    program = ":sed",
+    arguments = ["-e", "'/^[^\"]/{'", "-e", "N", "-e", "'s/\\n//'", "-e", "}"],
+    stdin = "k1=\n\"v1\"\nk2=\n\"v2\"",
+    expected_output = "k1=\"v1\"\nk2=\"v2\"",
     tags = ["manual"],
 )

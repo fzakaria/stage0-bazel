@@ -8,8 +8,12 @@ older one in ways that only show up inside `eval`:
 so every configure past this point needs a current shell. 2.05b's job was to
 get from kaem to here, and this is the last thing it builds.
 
-NOT REACHED YET: this needs the sed in tools/pkg/gnused/latest, which
-builds but is miscompiled -- see that package. Tagged manual until then.
+It needs the sed from tools/pkg/gnused/latest: config.status is assembled by
+one sed piped into another, and sed 4.0.9 cannot run N when its input is
+stdin.
+
+BLOCKED: needs a working sed 4.2; see tools/pkg/gnused/latest. Tagged
+manual until then.
 """
 
 load("//tools/pkg:configure.bzl", "DECOMPRESS_GNU", "LIBC_HEADERS_TOOLCHAIN", "configure_package")
