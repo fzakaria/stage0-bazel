@@ -1,0 +1,250 @@
+"""tinycc as it is maintained today, built by the bootstrapped one.
+
+The chain up to here uses janneke's bootstrappable fork, which exists to be
+just simple enough for mescc to compile. It is missing years of fixes, and
+programs it builds are unreliable in ways that are hard to attribute -- GNU
+make built with it segfaults non-deterministically. Every package should
+therefore be built with this compiler rather than that one.
+
+The recipe is nixpkgs' minimal-bootstrap tinycc/mes.nix. Two rounds: a boot
+compiler built by the fork, then the real one built by that.
+"""
+
+load("@bazel_skylib//rules:write_file.bzl", "write_file")
+load("//tools/stage0:files.bzl", "patched_tree", "tool_dir")
+load("//tools/stage0:kaem.bzl", "kaem_run")
+load("//tools/stage0:tcc.bzl", "tcc_binary")
+load("//tools/tcc:stages.bzl", "tcc_libraries")
+load("//tools/verify:run_test.bzl", "program_output_test")
+
+package(
+    default_visibility = ["//visibility:public"],
+)
+
+# Edits from nixpkgs' minimal-bootstrap, verbatim.
+PATCHES = {
+    # Link statically unless told otherwise; there is no dynamic loader here.
+    "libtcc.c": [
+        "s->ms_extensions = 1;",
+        "s->ms_extensions = 1; s->static_link = 1;",
+    ],
+    # Name the extended x86-64 registers the assembler would otherwise drop.
+    "i386-asm.c": [
+        "switch(size)",
+        "if (reg >= 8) { cstr_printf(add_str, \"%%r%d%c\", reg, (size == 1) ? 'b' : ((size == 2) ? 'w' : ((size == 4) ? 'd' : ' '))); return; } switch(size)",
+    ],
+    # `tcc -ar` rejects every invocation in this revision. Its option scan
+    # starts at argv[1], which is the "-ar" selector itself, and "-ar"
+    # contains an "a" -- one of the mode letters it treats as unsupported and
+    # refuses. Starting at argv[2] scans the mode string instead, which is
+    # what the check was meant to look at.
+    "tcctools.c": [
+        "for (i = 1; i < argc; i++) {",
+        "for (i = 2; i < argc; i++) {",
+        "if ((*a == '-') || (i == 1 && !strchr(a, '.')))",
+        "if ((*a == '-') || (i == 2 && !strchr(a, '.')))",
+    ],
+    # Adding a negative integer to a pointer has to widen as ptrdiff_t, not
+    # as size_t, or the offset comes out huge and positive.
+    "tccgen.c": [
+        "vpush_type_size(pointed_type(&vtop[-1].type), &align);",
+        "vpush_type_size(pointed_type(&vtop[-1].type), &align); if (!(vtop[-1].type.t & VT_UNSIGNED)) gen_cast_s(VT_PTRDIFF_T);",
+    ],
+}
+
+patched_tree(
+    name = "src",
+    srcs = ["@tinycc-current//:tree"],
+    prefix = "src",
+    substitutions = PATCHES,
+)
+
+# ./configure writes this. Only the version string is needed; everything
+# else it would emit is passed as a -D flag below.
+write_file(
+    name = "config_h",
+    out = "src/config.h",
+    content = ["#define TCC_VERSION \"0.9.28rc\""],
+)
+
+write_file(
+    name = "src_includedir_marker",
+    out = "src/include/TCC_INCLUDEDIR",
+    content = ["tinycc include search directory"],
+)
+
+filegroup(
+    name = "src_include_dir",
+    srcs = [":src/include/TCC_INCLUDEDIR"],
+)
+
+# With CONFIG_TCC_PREDEFS the compiler carries its built-in macros as a C
+# string rather than reading a header at run time. c2str does that conversion,
+# and it is itself a C program the previous compiler has to build first.
+tool_dir(
+    name = "bootstrap_tcc",
+    tools = {"tcc": "//tools/tcc:tcc"},
+)
+
+write_file(
+    name = "tccdefs_script",
+    out = "tccdefs.kaem",
+    content = [
+        "# Build c2str with the compiler from the previous chain, then use it",
+        "# to turn tccdefs.h into the string literal the new one embeds.",
+        "mkdir -p ${out}",
+        " ".join([
+            "tcc -B ${tcc_libs}",
+            "-I ${tcc_include}",
+            "-I ${mes_arch_include}",
+            "-I ${mes_include}",
+            "-D C2STR",
+            "-o c2str",
+            "${conftest}",
+        ]),
+        "./c2str ${tccdefs} ${out}/tccdefs_.h",
+        "",
+    ],
+)
+
+kaem_run(
+    name = "tccdefs",
+    script = "tccdefs.kaem",
+    srcs = [
+        "//tools/tcc:src",
+        "//tools/mes:arch_headers",
+        "@mes-m2//:headers",
+    ],
+    substitutions = {
+        "conftest": "@tinycc-current//:conftest.c",
+        "tccdefs": "@tinycc-current//:include/tccdefs.h",
+    },
+    directory_substitutions = {
+        "tcc_libs": "//tools/tcc:tcc_libs",
+        "tcc_include": "//tools/tcc:src_include_dir",
+        "mes_arch_include": "//tools/mes:arch_include_dir",
+        "mes_include": "@mes-m2//:headers",
+    },
+    tools = [
+        ":bootstrap_tcc",
+        "//tools/mescc-tools-extra:bin",
+    ],
+)
+
+# Everything this tinycc is compiled with. The paths it will search at run
+# time are set separately, by sysinclude_dirs.
+DEFINES = [
+    "BOOTSTRAP=1",
+    "ONE_SOURCE=1",
+    "TCC_TARGET_X86_64=1",
+    "HAVE_BITFIELD=1",
+    "HAVE_FLOAT=1",
+    "HAVE_LONG_LONG=1",
+    "HAVE_SETJMP=1",
+    "CONFIG_TCC_PREDEFS=1",
+    # The lock the semaphore implementation needs is not available here, and
+    # nothing in this build is threaded.
+    "CONFIG_TCC_SEMLOCK=0",
+    "CONFIG_TCCBOOT=1",
+    "CONFIG_TCC_STATIC=1",
+    "CONFIG_USE_LIBGCC=1",
+    "TCC_MES_LIBC=1",
+    "CONFIG_TCCDIR=\"\"",
+    "CONFIG_SYSROOT=\"\"",
+    "CONFIG_TCC_CRTPREFIX=\"{B}\"",
+    "CONFIG_TCC_ELFINTERP=\"\"",
+    "CONFIG_TCC_LIBPATHS=\"{B}\"",
+    "TCC_LIBGCC=\"libc.a\"",
+    "TCC_LIBTCC1=\"libtcc1.a\"",
+]
+
+# Two rounds, as upstream does: the first compiler is built by the fork, the
+# second by the first. Only the second is used for anything else.
+[
+    tcc_binary(
+        name = name,
+        srcs = [
+            ":src",
+            ":tccdefs",
+            "//tools/tcc:src",
+            "//tools/mes:arch_headers",
+            "@mes-m2//:headers",
+        ],
+        main = "src/tcc.c",
+        defines = DEFINES,
+        # The headers here are the ones the *compiling* tcc understands, not
+        # the ones being compiled. Current tinycc's stdarg.h declares
+        # __builtin_va_list, which the fork does not implement, so its own
+        # include directory must not shadow the fork's.
+        include_dir_markers = [
+            ":src/config.h",
+            compiler_headers,
+            "//tools/mes:include/MESCC_INCLUDEDIR",
+            "@mes-m2//:include/errno.h",
+        ],
+        # tccdefs_.h is included by name, so its directory has to be searched.
+        sysinclude_dirs = [
+            ":src_include_dir",
+            "@mes-m2//:headers",
+        ],
+        include_dirs = [":tccdefs"],
+        libs = libs,
+        tcc = compiler,
+    )
+    # The include directory follows the compiler doing the building, not the
+    # source being built: each tinycc's stdarg.h matches its own calling
+    # convention and the two are not interchangeable.
+    for name, compiler, libs, compiler_headers in [
+        (
+            "tcc-boot",
+            "//tools/tcc:tcc",
+            "//tools/tcc:tcc_libs",
+            "//tools/tcc:src/include/TCC_INCLUDEDIR",
+        ),
+        (
+            "tcc",
+            ":tcc-boot",
+            ":tcc-boot_libs",
+            ":src/include/TCC_INCLUDEDIR",
+        ),
+    ]
+]
+
+tcc_libraries(
+    name = "tcc-boot_libs",
+    tcc = ":tcc-boot",
+    prev_libs = "//tools/tcc:tcc_libs",
+    libtcc_defines = ["TCC_TARGET_X86_64=1"],
+    mes_headers = "@mes-m2//:headers",
+    tcc_include = ":src_include_dir",
+    tcc_src = ":src",
+    # Current tinycc handles variadic arguments itself, so va_list.c is gone;
+    # alloca has to come from assembly instead.
+    libtcc_srcs = {
+        "libtcc1": "@tinycc-current//:lib/libtcc1.c",
+        "alloca": "@tinycc-current//:lib/alloca.S",
+    },
+)
+
+tcc_libraries(
+    name = "tcc_libs",
+    tcc = ":tcc",
+    prev_libs = ":tcc-boot_libs",
+    libtcc_defines = ["TCC_TARGET_X86_64=1"],
+    mes_headers = "@mes-m2//:headers",
+    tcc_include = ":src_include_dir",
+    tcc_src = ":src",
+    # Current tinycc handles variadic arguments itself, so va_list.c is gone;
+    # alloca has to come from assembly instead.
+    libtcc_srcs = {
+        "libtcc1": "@tinycc-current//:lib/libtcc1.c",
+        "alloca": "@tinycc-current//:lib/alloca.S",
+    },
+)
+
+program_output_test(
+    name = "tcc_version_test",
+    program = ":tcc",
+    arguments = ["-v"],
+    expected_output = "tcc version 0.9.28rc (x86_64 Linux)",
+)

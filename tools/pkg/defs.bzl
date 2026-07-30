@@ -71,8 +71,10 @@ def tcc_package(
         srcs = [],
         compression = "gz",
         check_argument = None,
-        tcc = "//tools/tcc:tcc",
-        tcc_libs = "//tools/tcc:tcc_libs",
+        tcc = "//tools/tcc/current:tcc",
+        tcc_libs = "//tools/tcc/current:tcc_libs",
+        tcc_include = "//tools/tcc/current:src_include_dir",
+        tcc_src = "//tools/tcc/current:src",
         includes = [],
         tools = [],
         **kwargs):
@@ -98,6 +100,9 @@ def tcc_package(
             omit when the program exits non-zero for it.
         tcc: The tinycc to build with.
         tcc_libs: That compiler's library directory.
+        tcc_include: That compiler's own include directory. Its stdarg.h has
+            to match its own calling convention, so this follows the compiler.
+        tcc_src: The source tree those headers belong to, staged as inputs.
         includes: Additional -I directories, as script variable references.
         tools: Extra tool directories to put on PATH.
         **kwargs: Passed through to the underlying kaem_run.
@@ -188,12 +193,12 @@ def tcc_package(
         substitutions = {"tarball": tarball},
         directory_substitutions = {
             "tcc_libs": tcc_libs,
-            "tcc_include": "//tools/tcc:src_include_dir",
+            "tcc_include": tcc_include,
             "mes_arch_include": "//tools/mes:arch_include_dir",
             "mes_include": "@mes-m2//:headers",
         },
         srcs = patch_labels + [
-            "//tools/tcc:src",
+            tcc_src,
             "//tools/mes:arch_headers",
             "@mes-m2//:headers",
         ] + srcs,

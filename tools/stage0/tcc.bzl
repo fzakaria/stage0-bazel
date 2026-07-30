@@ -72,6 +72,11 @@ def _tcc_args(ctx, output):
     for marker in ctx.files.include_dir_markers:
         args.add("-I", marker.dirname)
 
+    # Directories named by a target rather than by a file inside them, which
+    # is the only way to name a TreeArtifact.
+    for d in ctx.attr.include_dirs:
+        args.add("-I", _directory_root(d))
+
     # Where the compiler being built will look for headers when it is run.
     # This is baked into the binary, so it names directories in this build
     # rather than anything on the eventual host.
@@ -93,7 +98,10 @@ def _tcc_inputs(ctx, extra):
         A depset of File.
     """
     direct = extra + ctx.files.srcs + ctx.files.include_dir_markers
-    transitive = [d[DefaultInfo].files for d in ctx.attr.sysinclude_dirs]
+    transitive = [
+        d[DefaultInfo].files
+        for d in ctx.attr.sysinclude_dirs + ctx.attr.include_dirs
+    ]
     if ctx.attr.libs != None:
         transitive.append(ctx.attr.libs[DefaultInfo].files)
     return depset(direct = direct, transitive = transitive)
@@ -135,6 +143,9 @@ _TCC_ATTRS = {
     "include_dir_markers": attr.label_list(
         allow_files = True,
         doc = "One file per -I directory, sitting directly in it.",
+    ),
+    "include_dirs": attr.label_list(
+        doc = "Targets whose root directories are added to the include path.",
     ),
     "sysinclude_dirs": attr.label_list(
         doc = "Targets whose root directories become the built compiler's default include path.",

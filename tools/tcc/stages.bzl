@@ -16,7 +16,7 @@ load("//tools/stage0:tcc.bzl", "tcc_binary")
 # The C standard the mes library is written against.
 _LIBC_STD = "-std=c11"
 
-def _library_script(cflags, libtcc_flags, with_prev_libs):
+def _library_script(cflags, libtcc_flags, with_prev_libs, libtcc_names):
     """Writes the kaem script that rebuilds the C library.
 
     Compiling into the working directory and archiving from there is what
@@ -28,6 +28,7 @@ def _library_script(cflags, libtcc_flags, with_prev_libs):
         libtcc_flags: Flags for libtcc1, which needs the target definitions.
         with_prev_libs: Whether to point tinycc at the previous stage's -B
             directory. The first stage has none, because it is creating it.
+        libtcc_names: Script variable names holding the libtcc1 sources.
 
     Returns:
         The script, as a list of lines.
@@ -52,12 +53,15 @@ def _library_script(cflags, libtcc_flags, with_prev_libs):
         common + " -c -o libc.o ${libc}",
         "tcc -ar cr ${out}/libc.a libc.o",
         "",
-        "# The helper routines tinycc emits calls to. va_list belongs here as",
-        "# much as libtcc1 does: without it every variadic call in a program",
-        "# compiled by the next stage is a jump into nothing.",
-        libtcc + " -c -o libtcc1.o ${libtcc1}",
-        libtcc + " -c -o va_list.o ${va_list}",
-        "tcc -ar cr ${out}/libtcc1.a libtcc1.o va_list.o",
+        "# The helper routines tinycc emits calls to. Which ones are needed",
+        "# depends on the compiler: the bootstrappable fork calls out to",
+        "# va_list.c for variadic arguments, current tinycc handles those",
+        "# itself but needs alloca.",
+    ] + [
+        libtcc + " -c -o %s.o ${%s}" % (name, name)
+        for name in libtcc_names
+    ] + [
+        "tcc -ar cr ${out}/libtcc1.a " + " ".join([n + ".o" for n in libtcc_names]),
         "",
         "# getopt, wanted by several packages built later.",
         common + " -c -o libgetopt.o ${getopt}",
@@ -65,7 +69,19 @@ def _library_script(cflags, libtcc_flags, with_prev_libs):
         "",
     ]
 
-def tcc_libraries(name, tcc, mes_headers, prev_libs = None, libtcc_defines = [], tags = []):
+def tcc_libraries(
+        name,
+        tcc,
+        mes_headers,
+        prev_libs = None,
+        libtcc_defines = [],
+        tcc_include = "//tools/tcc:src_include_dir",
+        tcc_src = "//tools/tcc:src",
+        libtcc_srcs = {
+            "libtcc1": "@mes-m2//:lib/libtcc1.c",
+            "va_list": "@tinycc//:lib/va_list.c",
+        },
+        tags = []):
     """Rebuilds the mes C library with a given tinycc.
 
     Args:
@@ -75,6 +91,12 @@ def tcc_libraries(name, tcc, mes_headers, prev_libs = None, libtcc_defines = [],
         prev_libs: The previous stage's library directory, if there is one.
         libtcc_defines: Extra -D flags for libtcc1, which needs to know the
             target it is generating helpers for.
+        tcc_include: The include directory of the tinycc doing the building.
+            Its stdarg.h has to match its own calling convention, so this
+            follows the compiler rather than being fixed.
+        tcc_src: The source tree those headers belong to, staged as inputs.
+        libtcc_srcs: Script variable name to source label, for the helper
+            routines tinycc emits calls to.
         tags: Tags for the resulting target.
     """
     # The arch headers come first: mes source includes <arch/syscall.h> and
@@ -93,7 +115,12 @@ def tcc_libraries(name, tcc, mes_headers, prev_libs = None, libtcc_defines = [],
     write_file(
         name = name + "_script",
         out = name + ".kaem",
-        content = _library_script(cflags, libtcc_flags, prev_libs != None),
+        content = _library_script(
+            cflags,
+            libtcc_flags,
+            prev_libs != None,
+            sorted(libtcc_srcs.keys()),
+        ),
         tags = tags,
     )
 
@@ -105,13 +132,12 @@ def tcc_libraries(name, tcc, mes_headers, prev_libs = None, libtcc_defines = [],
 
     substitutions = {
         "libc": "//tools/mes/mes-libc:libc.c",
-        "libtcc1": "@mes-m2//:lib/libtcc1.c",
-        "va_list": "@tinycc//:lib/va_list.c",
         "getopt": "@mes-m2//:lib/posix/getopt.c",
     }
+    substitutions.update(libtcc_srcs)
     directory_substitutions = {
         "crt_dir": "//tools/mes/mes-libc:crt",
-        "tcc_include": "//tools/tcc:src_include_dir",
+        "tcc_include": tcc_include,
         "mes_include": mes_headers,
         "mes_arch_include": "//tools/mes:arch_include_dir",
     }
@@ -126,7 +152,7 @@ def tcc_libraries(name, tcc, mes_headers, prev_libs = None, libtcc_defines = [],
         # and every variadic function in the library reads its arguments from
         # the wrong place.
         srcs = [
-            "//tools/tcc:src",
+            tcc_src,
             "//tools/mes:arch_headers",
             "@mes-m2//:headers",
         ],

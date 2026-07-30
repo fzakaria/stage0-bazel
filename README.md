@@ -21,9 +21,9 @@ the host participates, and that claim is checked rather than asserted; see
 | mes C library rebuilt by tinycc | ✅ |
 | mescc-tools-extra and a `kaem_run` rule | ✅ |
 | tinycc self-rebuild chain (boot0 … final) | ✅ five stages, self-hosted |
-| GNU patch, GNU make | ✅ |
-| `tinycc-mes` (sixth stage, current tinycc) | ❌ next step, and the current blocker |
-| bash, coreutils, sed, grep, awk, tar, gzip | ⚠️ bash written, blocked on the above |
+| current tinycc, two more stages (seven in all) | ✅ |
+| GNU patch, GNU make | ✅ built, but make is not yet reliable |
+| bash, coreutils, sed, grep, awk, tar, gzip | ⚠️ bash written, blocked below |
 | musl, binutils, GCC 4.6, GCC 10 | ❌ not started |
 | binutils, GCC 4.7 (first with usable C++), modern GCC | ❌ not started |
 
@@ -67,11 +67,19 @@ because GNU make segfaults part-way through, and does so
 non-deterministically — the same makefile sometimes works — which points at a
 heap bug rather than at anything in bash.
 
-The likely cause is that packages are being built with the wrong tinycc.
-nixpkgs builds all of them with `tinycc-mes`: a sixth stage compiled from the
-current tinycc at repo.or.cz rather than from janneke's bootstrappable fork,
-using the compiler at the end of the chain here. That stage carries a large
-number of fixes the fork does not have. Adding it is the next step.
+That was first assumed to be the compiler: packages were being built with
+janneke's bootstrappable fork rather than with current tinycc, which nixpkgs
+uses for everything. `tools/tcc/current` now adds those two stages, so the
+chain runs seven compilers deep and every package is built with the last of
+them — but make still crashes, so the fork was not the cause.
+
+That leaves the C library. `make` exercises far more of mes-libc than anything
+before it, and the failure looks like heap corruption: the same makefile
+sometimes works. Two bugs in mes-libc have already been found and fixed here
+(`va_list` on x86-64, and `exit` returning the syscall number), and this
+looks like a third. Building musl and moving off mes-libc as early as
+possible is probably a better use of effort than finding it — that is what
+the chain does immediately after this point anyway.
 
 ## Building
 

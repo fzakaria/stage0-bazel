@@ -88,6 +88,17 @@ http_archive(
     strip_prefix = "tinycc-ea3900f6d5e71776c5cfabcabee317652e3a19ee",
 )
 
+# Current tinycc. The bootstrappable fork above is only capable enough to be
+# compiled by mescc; this is what the chain switches to as soon as it has a
+# compiler that can build it, and it is what every package is built with.
+http_archive(
+    name = "tinycc-current",
+    build_file = "//third_party:tinycc-current.BUILD",
+    sha256 = "311baaab74ca71f21a86d51676101c621a838863e40234bc51332c0c4fbf8c65",
+    url = "https://repo.or.cz/tinycc.git/snapshot/cb41cbfe717e4c00d7bb70035cda5ee5f0ff9341.tar.gz",
+    strip_prefix = "tinycc-cb41cbf",
+)
+
 # The C99 parser mescc is written against. Mes ships only two nyacc compat
 # shims, not the parser itself, so mescc cannot run without this.
 http_archive(

@@ -43,6 +43,7 @@ hermeticity_attestation(
     targets = [
         "//tools/pkg/gnumake",
         "//tools/pkg/gnupatch",
+        "//tools/tcc/current:tcc",
         "//tools/tcc:tcc",
         "//tools/tcc/tests:features",
         "//tools/mes/tests:hello",
