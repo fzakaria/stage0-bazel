@@ -105,3 +105,12 @@ http_file(
     url = "https://mirror.team-cymru.com/gnu/patch/patch-2.5.9.tar.gz",
     downloaded_file_path = "patch-2.5.9.tar.gz",
 )
+
+# GNU make. Everything past this point has a Makefile, so this is the last
+# package whose source list has to be transcribed by hand.
+http_file(
+    name = "gnumake-src",
+    sha256 = "dd16fb1d67bfab79a72f5e8390735c49e3e8e70b4945a15ab1f81ddb78658fb3",
+    url = "https://mirror.team-cymru.com/gnu/make/make-4.4.1.tar.gz",
+    downloaded_file_path = "make-4.4.1.tar.gz",
+)

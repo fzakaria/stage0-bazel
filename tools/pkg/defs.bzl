@@ -66,6 +66,8 @@ def tcc_package(
         ldflags = [],
         configure = [],
         extra_setup = [],
+        patches = [],
+        patch_labels = [],
         srcs = [],
         compression = "gz",
         check_argument = None,
@@ -88,6 +90,8 @@ def tcc_package(
         configure: Script lines run before compiling, for the file shuffling
             upstream's ./configure would otherwise do.
         extra_setup: Script lines run immediately after unpacking.
+        patches: Execroot-relative paths of patch files, applied at -p1.
+        patch_labels: The same patches as labels, so they reach the action.
         srcs: Additional files the script reads.
         compression: Archive compression: "gz", "bz2" or "xz".
         check_argument: Argument used to smoke-test the program in the script;
@@ -121,6 +125,16 @@ def tcc_package(
     objects = [_object_name(s) for s in sources]
 
     lines = _unpack_lines(prefix, compression)
+
+    # patch -d changes directory for patch alone. Running `cd` in the script
+    # instead would break PATH, whose entries are relative to the execroot, so
+    # every later command would stop resolving.
+    if patches:
+        lines.append("# Patch, at -p1 relative to the unpacked tree.")
+        for patch in patches:
+            lines.append("patch -d %s -Np1 -i ../%s" % (prefix, patch))
+        lines.append("")
+
     lines += extra_setup
     if configure:
         lines += [
@@ -178,7 +192,7 @@ def tcc_package(
             "mes_arch_include": "//tools/mes:arch_include_dir",
             "mes_include": "@mes-m2//:headers",
         },
-        srcs = [
+        srcs = patch_labels + [
             "//tools/tcc:src",
             "//tools/mes:arch_headers",
             "@mes-m2//:headers",

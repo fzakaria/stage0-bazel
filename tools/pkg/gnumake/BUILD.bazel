@@ -1,0 +1,159 @@
+"""GNU make.
+
+Built with tinycc directly rather than by running its own configure, which
+needs a shell that does not exist yet. The -D set below is what upstream's
+./configure emits, filtered to the definitions the sources actually use;
+nixpkgs records how it was generated in its gnumake/default.nix.
+
+Three patches are applied: two remove impure lookups in /bin, /lib and
+/usr/include, and one adapts the source to tinycc. They are vendored here
+rather than fetched, so nothing outside the audited graph enters the build.
+"""
+
+load("//tools/pkg:defs.bzl", "installed_program", "tcc_package")
+load("//tools/stage0:files.bzl", "tool_dir")
+load("//tools/verify:run_test.bzl", "program_output_test")
+
+package(
+    default_visibility = ["//visibility:public"],
+)
+
+PATCHES = [
+    "patches/0001-No-impure-bin-sh.patch",
+    "patches/0002-remove-impure-dirs.patch",
+    "patches/0003-tinycc-support.patch",
+]
+
+tcc_package(
+    name = "gnumake",
+    tarball = "@gnumake-src//file",
+    prefix = "make-4.4.1",
+    binary = "make",
+    patches = ["tools/pkg/gnumake/" + patch for patch in PATCHES],
+    patch_labels = PATCHES,
+    tools = ["//tools/pkg/gnupatch:bin"],
+    configure = [
+        "catm make-4.4.1/src/config.h make-4.4.1/src/mkconfig.h make-4.4.1/src/mkcustom.h",
+        "cp make-4.4.1/lib/glob.in.h make-4.4.1/lib/glob.h",
+        "cp make-4.4.1/lib/fnmatch.in.h make-4.4.1/lib/fnmatch.h",
+    ],
+    cflags = [
+        "-I make-4.4.1/src",
+        "-I make-4.4.1/lib",
+        "-DHAVE_CONFIG_H",
+        "-DMAKE_MAINTAINER_MODE",
+        "-DLIBDIR=\\\"/usr/local/lib\\\"",
+        "-DLOCALEDIR=\\\"/fake-locale\\\"",
+        "-DPOSIX=1",
+        "-DNO_OUTPUT_SYNC=1",
+        "-DO_TMPFILE=020000000",
+        "-DFILE_TIMESTAMP_HI_RES=0",
+        "-DHAVE_ALLOCA",
+        "-DHAVE_ALLOCA_H",
+        "-DHAVE_ATEXIT",
+        "-DHAVE_DECL_BSD_SIGNAL=0",
+        "-DHAVE_DECL_GETLOADAVG=0",
+        "-DHAVE_DECL_SYS_SIGLIST=0",
+        "-DHAVE_DECL__SYS_SIGLIST=0",
+        "-DHAVE_DECL___SYS_SIGLIST=0",
+        "-DHAVE_DIRENT_H",
+        "-DHAVE_DUP2",
+        "-DHAVE_FCNTL_H",
+        "-DHAVE_FDOPEN",
+        "-DHAVE_GETCWD",
+        "-DHAVE_GETTIMEOFDAY",
+        "-DHAVE_INTTYPES_H",
+        "-DHAVE_ISATTY",
+        "-DHAVE_LIMITS_H",
+        "-DHAVE_LOCALE_H",
+        "-DHAVE_MEMORY_H",
+        "-DHAVE_MKTEMP",
+        "-DHAVE_SA_RESTART",
+        "-DHAVE_SETVBUF",
+        "-DHAVE_SIGACTION",
+        "-DHAVE_SIGSETMASK",
+        "-DHAVE_STDINT_H",
+        "-DHAVE_STDLIB_H",
+        "-DHAVE_STRDUP",
+        "-DHAVE_STRERROR",
+        "-DHAVE_STRINGS_H",
+        "-DHAVE_STRING_H",
+        "-DHAVE_STRTOLL",
+        "-DHAVE_SYS_FILE_H",
+        "-DHAVE_SYS_PARAM_H",
+        "-DHAVE_SYS_RESOURCE_H",
+        "-DHAVE_SYS_SELECT_H",
+        "-DHAVE_SYS_STAT_H",
+        "-DHAVE_SYS_TIMEB_H",
+        "-DHAVE_SYS_TIME_H",
+        "-DHAVE_SYS_WAIT_H",
+        "-DHAVE_TTYNAME",
+        "-DHAVE_UMASK",
+        "-DHAVE_UNISTD_H",
+        "-DHAVE_WAITPID",
+        "-DMAKE_JOBSERVER",
+        "-DMAKE_SYMLINKS",
+        "-DPATH_SEPARATOR_CHAR=':'",
+        "-DSCCS_GET=\\\"get\\\"",
+        "-DSTDC_HEADERS",
+        "-Dsig_atomic_t=int",
+        "-Dvfork=fork",
+    ],
+    sources = [
+        "src/ar.c",
+        "src/arscan.c",
+        "src/commands.c",
+        "src/default.c",
+        "src/dir.c",
+        "src/expand.c",
+        "src/file.c",
+        "src/function.c",
+        "src/getopt.c",
+        "src/getopt1.c",
+        "src/guile.c",
+        "src/hash.c",
+        "src/implicit.c",
+        "src/job.c",
+        "src/load.c",
+        "src/loadapi.c",
+        "src/main.c",
+        "src/misc.c",
+        "src/output.c",
+        "src/read.c",
+        "src/remake.c",
+        "src/rule.c",
+        "src/shuffle.c",
+        "src/signame.c",
+        "src/strcache.c",
+        "src/variable.c",
+        "src/version.c",
+        "src/vpath.c",
+        "lib/fnmatch.c",
+        "lib/glob.c",
+        "src/remote-stub.c",
+        "src/posixos.c",
+    ],
+)
+
+installed_program(
+    name = "make",
+    package = ":gnumake",
+    program = "make",
+)
+
+tool_dir(
+    name = "bin",
+    tools = {"make": ":make"},
+)
+
+program_output_test(
+    name = "gnumake_version_test",
+    program = ":make",
+    arguments = ["--version"],
+    expected_output = """GNU Make 4.4.1
+Built for unknown
+Copyright (C) 1988-2023 Free Software Foundation, Inc.
+License GPLv3+: GNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>
+This is free software: you are free to change and redistribute it.
+There is NO WARRANTY, to the extent permitted by law.""",
+)

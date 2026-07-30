@@ -60,6 +60,10 @@ filegroup(
     name = "arch_include_dir",
     srcs = [
         ":arch_headers",
+        # mes/lib-mini.h includes <mes/config.h>, so the generated header has
+        # to travel with the arch headers rather than only being on the
+        # include path.
+        ":include/mes/config.h",
         ":include/MESCC_INCLUDEDIR",
     ],
 )

@@ -11,6 +11,7 @@ is a string literal has to escape them.
 """
 
 load("//tools/pkg:defs.bzl", "installed_program", "tcc_package")
+load("//tools/stage0:files.bzl", "tool_dir")
 load("//tools/verify:run_test.bzl", "program_output_test")
 
 package(
@@ -76,6 +77,12 @@ installed_program(
     name = "patch",
     package = ":gnupatch",
     program = "patch",
+)
+
+# The form later packages put on PATH.
+tool_dir(
+    name = "bin",
+    tools = {"patch": ":patch"},
 )
 
 # patch reports its version with exit status 60 rather than 0 when linked
