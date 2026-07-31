@@ -18,68 +18,72 @@ the host participates, and that claim is checked rather than asserted; see
 | GNU Mes (Scheme interpreter) | ✅ boots and evaluates |
 | mescc (C99 compiler) and the mes C library | ✅ compiles and links working programs |
 | tinycc (`tcc-mes`), native x86-64 | ✅ |
-| mes C library rebuilt by tinycc | ✅ |
-| mescc-tools-extra and a `kaem_run` rule | ✅ |
-| tinycc self-rebuild chain (boot0 … final) | ✅ five stages, self-hosted |
-| current tinycc, two more stages (seven in all) | ✅ |
-| GNU patch, GNU make | ✅ built, but make is not yet reliable |
-| bash, coreutils, sed, grep, awk, tar, gzip | ⚠️ bash written, blocked below |
-| musl, binutils, GCC 4.6, GCC 10 | ❌ not started |
-| binutils, GCC 4.7 (first with usable C++), modern GCC | ❌ not started |
+| tinycc self-rebuild chain, then current tinycc (seven stages) | ✅ self-hosted |
+| GNU patch, make, bash, coreutils, sed, grep, awk, gzip, diffutils | ✅ |
+| musl, and tinycc rebuilt against it | ✅ |
+| GNU binutils 2.46 | ✅ a real assembler and linker |
+| GCC 4.6.4, C | ✅ |
+| musl again, this time compiled by GCC | ✅ |
+| GCC 4.6.4 with C++, and libstdc++ | ✅ |
+| A registered `cc_toolchain` | ✅ `cc_binary`, `cc_library` and `cc_test` work |
 
-**There is no C or C++ `cc_toolchain` yet, and this module cannot build
-ordinary C++ code.** Neither mescc nor tinycc 0.9.27 compiles C++, and
-registering a `cc_toolchain` on top of them would advertise a capability that
-does not exist. That wiring is deliberately deferred until the chain reaches a
-compiler that can compile C++ — see [Roadmap](#roadmap).
-
-What *does* work today is that C is compiled and linked by compilers whose
-entire ancestry is in this repository:
+The chain ends in a C++ compiler, and ordinary Bazel rules use it:
 
 ```console
 $ bazel test //...
-//tools/mes:mes_boot_test                                       PASSED
-//tools/mes/tests:hello_test                                    PASSED
-//tools/stage0/phase0:hex0-diff                                 PASSED
-//tools/stage0/phase2:catm-diff-test                            PASSED
-//tools/tcc:tcc_version_test                                    PASSED
+//toolchain/tests:greeting_test                                 PASSED
+//toolchain/tests:hello_test                                    PASSED
+//tools/pkg/gcc:gcc_version_test                                PASSED
+//tools/pkg/gcc/cxx:gcc_cxx_version_test                        PASSED
+... 38 tests, all passing
 
-$ bazel run //tools/mes/tests:hello
-hello from mescc
-
-$ bazel run //:tcc-mes -- -v
-tcc version 0.9.28-mes (x86_64 Linux)
-
-$ bazel run //tools/tcc/tests:hello
-hello from tcc
+$ bazel run //toolchain/tests:hello
+hello world
+largest 11
+caught largest of nothing
 ```
 
-Those binaries are statically linked x86-64 ELF executables whose only
-untrusted input is the hex0 seed, and `tcc-mes` emits x86-64 objects — it is a
-native compiler, not a cross compiler. `//tools/tcc/tests:hello` is the
-strongest statement the chain currently makes: a C program using `malloc` and
-stdio, compiled and linked by tinycc against a C library tinycc itself built.
+`toolchain/tests/hello.cc` is a plain `cc_binary`. It uses `std::vector`,
+`std::string`, `std::sort`, iostreams, a template and a throw caught by
+reference — the last of those is what proves the whole chain agrees, because
+an exception crossing a function boundary needs the unwind tables the
+compiler emitted, the assembler encoded and the linker merged. The result is
+a static ELF executable with no `PT_INTERP`, and every program that produced
+it descends from the 357-byte hex0 seed.
 
-### Where it currently stops
+### What the compiler is
 
-`bash` is written (`tools/pkg/bash`) and tagged `manual`. The build fails
-because GNU make segfaults part-way through, and does so
-non-deterministically — the same makefile sometimes works — which points at a
-heap bug rather than at anything in bash.
+GCC 4.6.4 and musl 1.2.6, built in this order:
 
-That was first assumed to be the compiler: packages were being built with
-janneke's bootstrappable fork rather than with current tinycc, which nixpkgs
-uses for everything. `tools/tcc/current` now adds those two stages, so the
-chain runs seven compilers deep and every package is built with the last of
-them — but make still crashes, so the fork was not the cause.
+1. tinycc, seven stages deep, is the first compiler that can build a libc.
+2. musl, compiled by tinycc twice — the first round because the mes-libc
+   tinycc miscompiles long double arithmetic, so the libc it produces formats
+   floating point wrongly, and the second by the tinycc that first round
+   fixed.
+3. binutils, then GCC 4.6.4 for C. 4.6 is the last release a compiler as
+   limited as tinycc can build, which is why both reference bootstraps go
+   through it.
+4. musl a third time, compiled by GCC. The tinycc rounds are missing what
+   tinycc could not build — the complex math, the hand-written x86-64 string
+   and math routines — and a toolchain that ships a libc has to ship a whole
+   one.
+5. GCC 4.6.4 again with `--enable-languages=c,c++`, built by the C compiler
+   from step 3 against the musl from step 4. tinycc cannot compile C++ at
+   all, so a second GCC pass is how the chain acquires one.
 
-That leaves the C library. `make` exercises far more of mes-libc than anything
-before it, and the failure looks like heap corruption: the same makefile
-sometimes works. Two bugs in mes-libc have already been found and fixed here
-(`va_list` on x86-64, and `exit` returning the syscall number), and this
-looks like a third. Building musl and moving off mes-libc as early as
-possible is probably a better use of effort than finding it — that is what
-the chain does immediately after this point anyway.
+Version numbers, patches and configure flags are nixpkgs'
+[minimal-bootstrap](https://github.com/NixOS/nixpkgs/tree/master/pkgs/os-specific/linux/minimal-bootstrap),
+with one deliberate departure: everything here is linked statically. nixpkgs
+points the compiler at musl's dynamic loader, and there is no shared musl in
+this repository to load.
+
+### What C++ this is
+
+GCC 4.6 is from 2011. It implements C++98 fully and the parts of C++0x that
+existed at the time, which `-std=c++0x` selects; it is not a C++11 compiler
+and it is nobody's idea of a modern one. It is the compiler this chain can
+reach, and the next step is to use it to build a modern GCC — see
+[Roadmap](#roadmap).
 
 ## Building
 
@@ -105,7 +109,23 @@ actions see a fixed `PATH` rather than the developer's.
 reaching an action were built here, how many came from a hash-pinned archive,
 how many are checked in, and which binaries were taken on trust. Nothing falls
 outside those categories, which is what "hermetic" means here — no input read
-from the host, and no unpinned input.
+from the host, and no unpinned input. Both audits start from the C++ program,
+so what they cover is the toolchain and everything under it:
+
+```
+2. Every file reaching an action came from one of three places:
+
+     2467 built by this graph
+     847 from a hash-pinned archive
+     35 checked in to this repository
+```
+
+Two of those pinned files are worth naming, because they are shell scripts
+rather than sources: `link_dynamic_library.sh` and `build_interface_so`, which
+Bazel's own `cc_toolchain` rule attaches to every link action. This toolchain
+declares no dynamic linking, so neither is ever run — and the trust report
+below is what establishes that, because it checks the program each action
+executes rather than what it merely has available.
 
 Configuration can be overridden on the command line, so the enforcing check is
 `//:trust-report`. It runs an aspect over every action reachable from the
@@ -127,9 +147,38 @@ actions and does not extend to anything producing a build artifact.
 
 ## Using this as a Bazel module
 
+Depend on the module and register its toolchain. A registration made in one
+module does not reach another, so this line has to be in your own
+`MODULE.bazel`:
+
 ```starlark
 bazel_dep(name = "stage0-bazel", version = "0.1.0")
+
+register_toolchains("@stage0-bazel//toolchain:cc")
 ```
+
+That is all. `cc_binary`, `cc_library` and `cc_test` then resolve to the
+bootstrapped GCC, and nothing in your BUILD files mentions the bootstrap:
+
+```starlark
+cc_binary(
+    name = "app",
+    srcs = ["app.cc"],
+)
+```
+
+Two things to know about the result. Programs are statically linked, because
+the musl this ships has no shared objects. And the compiler is GCC 4.6, so
+`-std=c++0x` is as new as the language gets; add it with `copts` if you want
+it.
+
+Building your first target builds the whole bootstrap, which takes on the
+order of twenty minutes on a warm machine and is cached afterwards.
+
+The lower-level tools are available under stable labels for anything that
+wants them directly: `@stage0-bazel//:hex2`, `//:M1`, `//:blood-elf`,
+`//:M2-Planet`, `//:M2-Mesoplanet`, `//:get_machine`, `//:kaem`, `//:mes`,
+`//:tcc-mes` and `//:tcc`. mescc has rules of its own:
 
 ```starlark
 load("@stage0-bazel//tools:defs.bzl", "mescc_binary", "mescc_object")
@@ -146,10 +195,6 @@ mescc_binary(
     toolchain = "@stage0-bazel//:mescc",
 )
 ```
-
-The bootstrapped tools are also available under stable labels:
-`@stage0-bazel//:hex2`, `//:M1`, `//:blood-elf`, `//:M2-Planet`,
-`//:M2-Mesoplanet`, `//:get_machine`, `//:kaem`, `//:mes` and `//:tcc-mes`.
 
 ## How the pieces fit
 
@@ -173,29 +218,23 @@ archiving uses no host tool.
 
 ## Roadmap
 
-The remaining path to C++ follows
-[live-bootstrap](https://github.com/fosslinux/live-bootstrap), which is the
-reference for how far this has to go:
+The chain reaches a working C++ compiler, but a 2011 one. What is left is
+mostly about making it a compiler people would want to use.
 
-1. **`tinycc-mes`**, the sixth tinycc stage, from the current tinycc source.
-   nixpkgs' `tinycc/mes.nix` gives the revision, the three source edits and
-   the flags; it also needs `tccdefs_.h`, generated by building `c2str` from
-   `conftest.c` and running it over `include/tccdefs.h`. This is what the rest
-   of the chain is waiting on.
-2. **The remaining utilities**: coreutils, bash, sed, grep, awk, tar, gzip,
-   diffutils, findutils. Each is a `tcc_package` or a `kaem_run` over
-   `./configure && make`, so the shape is settled; `gnupatch` and `gnumake`
-   are worked examples.
-3. **musl**, then tinycc rebuilt against it. GCC cannot be built against
-   mes-libc.
-4. **binutils**, then **GCC 4.6 for C**, then **GCC 4.6 with C++ enabled**
-   built by the C compiler from the step before, then **GCC 10.4**.
-5. A registered `cc_toolchain` on top of that compiler, at which point C++
-   support is a real claim rather than an aspiration.
-
-The 29-package list, versions, patches and configure flags are all pinned in
-[nixpkgs' minimal-bootstrap](https://github.com/NixOS/nixpkgs/tree/master/pkgs/os-specific/linux/minimal-bootstrap),
-so what remains is transcription plus debugging rather than research.
+1. **GCC 10.4**, built by the 4.6 that exists now. nixpkgs'
+   minimal-bootstrap carries the recipe (`gcc/10.nix`) and it is the step
+   that turns C++0x into C++17. It needs a C++98 compiler to build, which is
+   exactly what step 5 above produced.
+2. **The toolchain's rough edges.** `libstdc++.a` does not carry the
+   libsupc++ objects, so the link line has to say `-lsupc++` explicitly; the
+   toolchain declares no dynamic linking, no `--start-lib`, and no separate
+   debug info. None of these is hard, and each is a small, testable change.
+3. **A `.bazelrc`-free consumer.** A depending module currently wants
+   `--incompatible_enable_cc_toolchain_resolution`, which is the default in
+   recent Bazel but is set explicitly here.
+4. **More of the utility set**: findutils, gnutar, bison, flex. Nothing in
+   the chain needs them today -- GCC's tar and flex rules are worked around
+   rather than satisfied -- but a package added later probably will.
 
 ## References
 
