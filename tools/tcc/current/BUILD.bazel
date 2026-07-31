@@ -27,6 +27,14 @@ PATCHES = {
     "libtcc.c": [
         "s->ms_extensions = 1;",
         "s->ms_extensions = 1; s->static_link = 1;",
+        # -MT names the target to write into a dependency file. tinycc has
+        # -MD, -MF and -MP but not this one, and automake's gcc3 dependency
+        # style always passes it. GCC's configure treats a style of "none" as
+        # a fatal error, so gcc3 is the only answer available and -MT has to
+        # be understood. The argument is consumed and the option otherwise
+        # behaves as -MP; nothing here reads the dependency files produced.
+        "{ \"MP\", TCC_OPTION_MP, 0},",
+        "{ \"MP\", TCC_OPTION_MP, 0},\n    { \"MT\", TCC_OPTION_MP, TCC_OPTION_HAS_ARG },",
     ],
     # Name the extended x86-64 registers the assembler would otherwise drop.
     "i386-asm.c": [

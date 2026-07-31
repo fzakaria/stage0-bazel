@@ -10,6 +10,13 @@ get from kaem to here, and this is the last thing it builds.
 
 It needs the sed from tools/pkg/gnused/latest, because config.status is
 assembled by one sed piped into another and sed 4.0.9 cannot run N on stdin.
+
+KNOWN FLAKY: this build intermittently fails at the link with symbols from
+builtins/libbuiltins.a undefined -- internal_getopt, lcurrent, loptend. A
+retry usually succeeds. The archive is created by a single
+`$(RM) $@; $(AR) $(ARFLAGS) $@ $(OFILES)`, so tcc -ar's inability to append
+does not explain it on its own, and the cause is not yet understood. It is
+worth chasing before anything depends on this being reproducible.
 """
 
 load("//tools/pkg:configure.bzl", "DECOMPRESS_GNU", "LIBC_HEADERS_TOOLCHAIN", "configure_package")

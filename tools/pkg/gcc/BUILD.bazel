@@ -9,20 +9,26 @@ The recipe is nixpkgs' minimal-bootstrap gcc/4.6.nix. gmp, mpfr and mpc are
 unpacked beside the GCC tree and linked into it under the names GCC's
 top-level configure looks for, so it builds them in-tree.
 
-Where it stands: the tarballs unpack, the patches apply, and configure gets
-as far as the per-directory configures. What is still missing:
+Where it stands: everything configures, gmp, mpfr, mpc, zlib, libiberty and
+libcpp build, and the compiler's own sources are being compiled. It stops in
+gcc/config/i386/i386.h:539,
 
-  - `cmp`, from diffutils, which is not built yet. GCC's configure and ld's
-    emultempl scripts both call it.
-  - `sleep`, which coreutils 5.0 does provide but which does not work when
-    built against mes-libc -- it cannot read the realtime clock. A coreutils
-    rebuilt against musl would fix it.
-  - "no usable dependency style found" from a subdirectory configure, even
-    though --disable-dependency-tracking is passed at the top level.
+    #if TARGET_64BIT_DEFAULT
+    ../.././gcc/config/i386/i386.h:539: error: invalid constant in
+                                        preprocessor expression
 
-untar also writes an @LongLink file when unpacking gcc-g++, so it does not
-handle the GNU long-filename extension; that will matter for the C++ stage
-even though it has not bitten yet.
+so tinycc's preprocessor cannot evaluate whatever TARGET_64BIT_DEFAULT
+expands to on this target. That is the next thing to look at: find the
+definition GCC generates for it and either simplify it or teach tinycc's
+#if evaluator the form it uses.
+
+Also still outstanding, though not yet reached:
+
+  - `cmp`, from diffutils, which is not built. GCC's configure and ld's
+    emultempl scripts both call it, and both currently carry on without it.
+  - untar leaves an @LongLink file when unpacking gcc-g++, so it does not
+    implement the GNU long-filename extension. That will matter for the C++
+    stage.
 
 Tagged manual until it builds.
 """
@@ -63,6 +69,10 @@ configure_package(
         "ln -s ../gmp-4.3.2 gmp",
         "ln -s ../mpfr-2.4.2 mpfr",
         "ln -s ../mpc-1.0.3 mpc",
+        # mpfr generates this from its PATCHES file, which the release
+        # tarball does not carry. The contents are only reported by
+        # mpfr_get_patches(), which nothing in a GCC build calls.
+        "printf 'const char *mpfr_get_patches (void) { return \"\"; }\n' > mpfr/get_patches.c",
     ],
     exports = [
         "AR=\"tcc -ar\"",
@@ -80,6 +90,18 @@ configure_package(
         # tcc -ar rewrites an archive rather than appending to it, so libtool
         # must not build one in batches. See tools/pkg/binutils.
         "lt_cv_sys_max_cmd_len=8388608",
+        # --disable-dependency-tracking is passed at the top level but does
+        # not reach every subdirectory configure, and those that miss it stop
+        # with "no usable dependency style found". configure treats an
+        # exported enable_* variable as if the flag had been given, so this
+        # reaches all of them.
+        "enable_dependency_tracking=no",
+        # And answer the dependency-style probe directly. GCC's own
+        # ZW_PROG_COMPILER_DEPENDENCIES treats a style of "none" as a fatal
+        # error rather than as "do not track", so gcc3 is the only usable
+        # answer; tinycc was taught -MT for it. See tools/tcc/current.
+        "am_cv_CC_dependencies_compiler_type=gcc3",
+        "am_cv_CXX_dependencies_compiler_type=gcc3",
     ],
     configure_flags = [
         "--build=x86_64-unknown-linux-gnu",
