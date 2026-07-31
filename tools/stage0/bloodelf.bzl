@@ -52,7 +52,7 @@ blood_elf = rule(
             executable = True,
             cfg = "exec",
             doc = "Bloodelf tool to create M1 footer for debug",
-            default = "@//tools/stage0/phase13:blood-elf",
+            default = "//tools/stage0/phase13:blood-elf",
         ),
     },
     doc = """Compiles C files into a M1 program.""",

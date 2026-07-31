@@ -41,7 +41,7 @@ package(
 
 configure_package(
     name = "musl",
-    srcs = ["floorl.c"],
+    extra_files = {"floorl": "floorl.c"},
     tarball = "@musl-src//file",
     prefix = "musl-1.2.6",
     # musl ships a complete set of headers and its internal ones have to win.
@@ -70,7 +70,7 @@ configure_package(
         # what printf uses to generate digits. tinycc miscompiles it --
         # floorl(5.7) returns 4 -- so it is replaced with one that does no
         # bit manipulation. See floorl.c.
-        "cp $root/tools/pkg/musl/floorl.c src/math/floorl.c",
+        "cp \"$root/$floorl\" src/math/floorl.c",
         "sed -i -e s/setjmp@PLT/setjmp/ src/signal/x86_64/sigsetjmp.s",
         # memset, memcpy and memmove are hand-written x86-64 assembly here,
         # and tinycc's assembler gets memset wrong: past the first few bytes
@@ -103,7 +103,7 @@ configure_package(
 
 configure_package(
     name = "musl2",
-    srcs = ["floorl.c"],
+    extra_files = {"floorl": "floorl.c"},
     tarball = "@musl-src//file",
     prefix = "musl-1.2.6",
     # musl ships a complete set of headers and its internal ones have to win.
@@ -139,7 +139,7 @@ configure_package(
         # what printf uses to generate digits. tinycc miscompiles it --
         # floorl(5.7) returns 4 -- so it is replaced with one that does no
         # bit manipulation. See floorl.c.
-        "cp $root/tools/pkg/musl/floorl.c src/math/floorl.c",
+        "cp \"$root/$floorl\" src/math/floorl.c",
         "sed -i -e s/setjmp@PLT/setjmp/ src/signal/x86_64/sigsetjmp.s",
         # memset, memcpy and memmove are hand-written x86-64 assembly here,
         # and tinycc's assembler gets memset wrong: past the first few bytes

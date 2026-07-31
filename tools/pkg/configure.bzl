@@ -74,6 +74,17 @@ _LIBC_HEADERS = [
     LIBC_HEADERS_NONE,
 ]
 
+def _patch_variable(index):
+    """Returns the script variable naming the index'th patch.
+
+    Args:
+        index: The patch's position in the package's list.
+
+    Returns:
+        A variable name.
+    """
+    return "patch%d" % index
+
 def _driver_lines(prefix, configure_flags, make_flags, build_targets, build_attempts, install_target, install_commands, cc, cc_flags, exports, extra_setup, libc_headers):
     """Returns the bash driver that configures, builds and installs a package.
 
@@ -334,10 +345,10 @@ def configure_package(
         cc_flags = [],
         exports = [],
         extra_setup = [],
+        extra_files = {},
         extra_directories = {},
         libc_headers = LIBC_HEADERS_MES,
         patches = [],
-        patch_labels = [],
         patch_strip = 1,
         extra_tarballs = {},
         srcs = [],
@@ -379,6 +390,10 @@ def configure_package(
         exports: Shell assignments exported before ./configure runs.
         extra_setup: Shell lines run inside the unpacked tree before
             ./configure, for the file shuffling some packages need.
+        extra_files: Further single files the build reads, as a map of
+            script-variable name to label. A path written out by hand would
+            be wrong as soon as this repository is a dependency rather than
+            the main one, so a file a setup line copies is named this way.
         extra_directories: Further directories the build reads, as a map of
             script-variable name to label. A package built by GCC uses this
             to name its C library, which the driver does not know about.
@@ -387,8 +402,7 @@ def configure_package(
             headers and must not see any others, LIBC_HEADERS_TOOLCHAIN for
             the musl tinycc's combined tree, or LIBC_HEADERS_NONE for a
             package that names its own compiler and needs none of them.
-        patches: Execroot-relative paths of patch files.
-        patch_labels: The same patches as labels, so they reach the action.
+        patches: Labels of patch files, applied in order.
         patch_strip: The -p level the patches are written against.
         extra_tarballs: Further archives unpacked beside the main one, as a
             map of script-variable name to label. A package like GCC ships
@@ -471,10 +485,15 @@ def configure_package(
             ]
         lines.append("")
 
+    # Each patch is named through a script variable rather than by path,
+    # because a path that is right when this repository is the main one is
+    # wrong when it is a dependency: everything moves under
+    # external/<module>+/ then. The rule resolves the label.
     if patches:
         lines.append("# Patch, relative to the unpacked tree.")
-        for patch in patches:
-            lines.append("patch -d %s -Np%d -i ../%s" % (prefix, patch_strip, patch))
+        for index in range(len(patches)):
+            lines.append("patch -d %s -Np%d -i ../${%s}" %
+                         (prefix, patch_strip, _patch_variable(index)))
         lines.append("")
 
     lines += [
@@ -529,12 +548,23 @@ def configure_package(
                 "tarball": tarball,
                 "driver": name + "_build.sh",
             },
-            **extra_tarballs
+            **dict(
+                extra_tarballs,
+                **dict(
+                    extra_files,
+                    **{_patch_variable(i): patches[i] for i in range(len(patches))}
+                )
+            )
         ),
         directory_substitutions = dict(libc_directories, **extra_directories),
-        srcs = patch_labels + [
+        # The driver's first job is to rewrite PATH as absolute paths, so the
+        # per-level copies kaem would otherwise add are dead weight -- and
+        # this is where the tool list is longest, which is where kaem's
+        # 4096-character limit on an environment variable bites first.
+        path_levels = 1,
+        srcs = [
             name + "_build.sh",
-        ] + libc_srcs + extra_directories.values() + srcs,
+        ] + libc_srcs + extra_directories.values() + extra_files.values() + srcs,
         # Order matters: earlier directories win. coreutils has to come before
         # mescc-tools-extra, whose rm, cp and mkdir are single-purpose
         # stand-ins that take no options -- `rm -f` reaches the wrong one

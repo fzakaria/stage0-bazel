@@ -47,7 +47,7 @@ m1_expand = rule(
             executable = True,
             cfg = "exec",
             doc = "The M0 tool.",
-            default = "@//tools/stage0/phase7:M1-0",
+            default = "//tools/stage0/phase7:M1-0",
         ),
     },
     doc = """Expand a M1 file to hex2.""",

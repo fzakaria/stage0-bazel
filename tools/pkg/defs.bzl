@@ -15,6 +15,17 @@ load("@bazel_skylib//rules:write_file.bzl", "write_file")
 load("//tools/stage0:files.bzl", "tool_dir")
 load("//tools/stage0:kaem.bzl", "kaem_run")
 
+def _patch_variable(index):
+    """Returns the script variable naming the index'th patch.
+
+    Args:
+        index: The patch's position in the package's list.
+
+    Returns:
+        A variable name.
+    """
+    return "patch%d" % index
+
 def _object_name(source):
     """Returns the object file name for a source path.
 
@@ -68,7 +79,6 @@ def tcc_package(
         configure = [],
         extra_setup = [],
         patches = [],
-        patch_labels = [],
         srcs = [],
         compression = "gz",
         check_argument = None,
@@ -98,8 +108,7 @@ def tcc_package(
         configure: Script lines run before compiling, for the file shuffling
             upstream's ./configure would otherwise do.
         extra_setup: Script lines run immediately after unpacking.
-        patches: Execroot-relative paths of patch files, applied at -p1.
-        patch_labels: The same patches as labels, so they reach the action.
+        patches: Labels of patch files, applied in order at -p1.
         srcs: Additional files the script reads.
         compression: Archive compression: "gz", "bz2" or "xz".
         check_argument: Argument used to smoke-test the program in the script;
@@ -148,10 +157,15 @@ def tcc_package(
     # patch -d changes directory for patch alone. Running `cd` in the script
     # instead would break PATH, whose entries are relative to the execroot, so
     # every later command would stop resolving.
+    # Each patch is named through a script variable rather than by path,
+    # because a path that is right when this repository is the main one is
+    # wrong when it is a dependency: everything moves under
+    # external/<module>+/ then. The rule resolves the label.
     if patches:
         lines.append("# Patch, at -p1 relative to the unpacked tree.")
-        for patch in patches:
-            lines.append("patch -d %s -Np1 -i ../%s" % (prefix, patch))
+        for index in range(len(patches)):
+            lines.append("patch -d %s -Np1 -i ../${%s}" %
+                         (prefix, _patch_variable(index)))
         lines.append("")
 
     lines += extra_setup
@@ -205,14 +219,17 @@ def tcc_package(
     kaem_run(
         name = name,
         script = name + ".kaem",
-        substitutions = {"tarball": tarball},
+        substitutions = dict(
+            {"tarball": tarball},
+            **{_patch_variable(i): patches[i] for i in range(len(patches))}
+        ),
         directory_substitutions = {
             "tcc_libs": tcc_libs,
             "tcc_include": tcc_include,
             "mes_arch_include": "//tools/mes:arch_include_dir",
             "mes_include": "//tools/mes:header_dir",
         },
-        srcs = patch_labels + [
+        srcs = [
             tcc_src,
             "//tools/mes:arch_headers",
             "//tools/mes:header_dir",

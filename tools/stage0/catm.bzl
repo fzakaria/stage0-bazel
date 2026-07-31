@@ -46,7 +46,7 @@ cat_files = rule(
             executable = True,
             cfg = "exec",
             doc = "The cat tool.",
-            default = "@//tools/stage0/phase2:catm",
+            default = "//tools/stage0/phase2:catm",
         ),
     },
     doc = """Concatenate (cat) a series of files.""",

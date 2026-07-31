@@ -67,9 +67,14 @@ def _kaem_run_impl(ctx):
     #
     # Earlier directories win, so a stage's own compiler shadows any tool of
     # the same name from the shared utility set.
+    # A script that never descends -- or that rewrites PATH before it does --
+    # needs only the plain entry, and kaem caps an environment variable at
+    # 4096 characters. That is a real ceiling once this repository is a
+    # dependency and every path grows an external/<module>+/ prefix.
+    prefixes = RELATIVE_PREFIXES[:ctx.attr.path_levels]
     search_path = []
     for d in tool_dirs:
-        for prefix in RELATIVE_PREFIXES:
+        for prefix in prefixes:
             search_path.append(prefix + d.path)
 
     env = {
@@ -129,6 +134,12 @@ kaem_run = rule(
         ),
         "env": attr.string_dict(
             doc = "Literal environment entries, applied after the substitutions.",
+        ),
+        "path_levels": attr.int(
+            default = len(RELATIVE_PREFIXES),
+            doc = "How many directory levels PATH has to work from. One means" +
+                  " the script stays at the execroot, or fixes PATH itself" +
+                  " before descending.",
         ),
         "output_dir": attr.string(
             doc = "Name of the output directory; defaults to the target name.",

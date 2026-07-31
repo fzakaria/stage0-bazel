@@ -71,9 +71,13 @@ write_file(
         "",
         "# Patch. -d keeps the directory change inside patch, so PATH -- whose",
         "# entries are relative to the execroot -- keeps working.",
+        "# Each file is named through a script variable rather than by",
+        "# path: a path that is right when this repository is the main one",
+        "# is wrong when it is a dependency, because everything moves under",
+        "# external/<module>+/ then.",
     ] + [
-        "patch -d %s -Np0 -i ../tools/pkg/coreutils/%s" % (PREFIX, patch)
-        for patch in PATCHES
+        "patch -d %s -Np0 -i ../${patch%d}" % (PREFIX, index)
+        for index in range(len(PATCHES))
     ] + [
         "",
         "# What ./configure would have written. Nothing defines HAVE_CONFIG_H,",
@@ -108,13 +112,13 @@ write_file(
         ]),
         "",
         "# Build. make -C rather than cd, for the same reason as patch -d.",
-        "make -C %s -f ../tools/pkg/coreutils/%s %s" % (PREFIX, MAKEFILE, _CC),
+        "make -C %s -f ../${makefile} %s" % (PREFIX, _CC),
         "",
         "# Install. The makefile's install target runs the install program it",
         "# just built, so PREFIX is relative to the directory make runs in.",
         "mkdir -p ${out}/bin",
-        "make -C %s -f ../tools/pkg/coreutils/%s %s install PREFIX=../${out}" %
-        (PREFIX, MAKEFILE, _CC),
+        "make -C %s -f ../${makefile} %s install PREFIX=../${out}" %
+        (PREFIX, _CC),
         "",
     ],
 )
@@ -122,13 +126,15 @@ write_file(
 kaem_run(
     name = "coreutils",
     script = "coreutils.kaem",
-    srcs = PATCHES + [
-        MAKEFILE,
+    srcs = [
         "//tools/tcc/current:src",
         "//tools/mes:arch_headers",
         "//tools/mes:header_dir",
     ],
-    substitutions = {"tarball": "@coreutils-src//file"},
+    substitutions = {
+        "tarball": "@coreutils-src//file",
+        "makefile": MAKEFILE,
+    } | {"patch%d" % index: PATCHES[index] for index in range(len(PATCHES))},
     directory_substitutions = {
         "tcc_libs": "//tools/tcc/current:tcc_libs",
         "tcc_include": "//tools/tcc/current:src_include_dir",

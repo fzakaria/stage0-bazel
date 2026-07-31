@@ -49,7 +49,7 @@ hex1_binary = rule(
             executable = True,
             cfg = "exec",
             doc = "hex1 assembler to use.",
-            default = "@//tools/stage0/phase1:hex1",
+            default = "//tools/stage0/phase1:hex1",
         ),
     },
     doc = """Compiles a hex1 program.""",

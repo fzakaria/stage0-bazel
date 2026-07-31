@@ -28,8 +28,7 @@ configure_package(
     tarball = "@gawk-src//file",
     prefix = "gawk-3.0.6",
     libc_headers = LIBC_HEADERS_TOOLCHAIN,
-    patches = ["tools/pkg/gawk/" + patch for patch in PATCHES],
-    patch_labels = PATCHES,
+    patches = PATCHES,
     patch_strip = 0,
     configure_flags = [
         "--build=x86_64-unknown-linux-gnu",

@@ -12,7 +12,6 @@ top-level configure looks for, so it builds them in-tree.
 
 load("//tools/pkg:configure.bzl", "DECOMPRESS_GNU", "LIBC_HEADERS_TOOLCHAIN", "configure_package")
 load("//tools/pkg:defs.bzl", "installed_program")
-load("//tools/stage0:files.bzl", "tool_dir")
 load("//tools/verify:run_test.bzl", "program_output_test")
 
 package(
@@ -41,8 +40,7 @@ configure_package(
         "mpfr": "@mpfr-src//file",
         "mpc": "@mpc-src//file",
     },
-    patches = ["tools/pkg/gcc/" + patch for patch in PATCHES],
-    patch_labels = PATCHES,
+    patches = PATCHES,
     extra_setup = [
         # GCC's configure builds these in-tree when it finds them under these
         # names. They are unpacked as siblings, so the links point up.
@@ -123,18 +121,14 @@ configure_package(
     ],
 )
 
+# The driver alone, for checking what it reports. It cannot compile anything
+# on its own: GCC finds cc1 relative to the path it was invoked by, so an
+# actual build has to name bin/gcc inside gcc_dist. See tools/pkg/musl's
+# third round for what that looks like.
 installed_program(
     name = "gcc",
     package = ":gcc_dist",
     program = "gcc",
-)
-
-tool_dir(
-    name = "bin",
-    tools = {
-        "gcc": ":gcc",
-        "cc": ":gcc",
-    },
 )
 
 program_output_test(

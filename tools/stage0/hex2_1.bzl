@@ -54,7 +54,7 @@ hex2_binary = rule(
             executable = True,
             cfg = "exec",
             doc = "The hex2 assembler.",
-            default = "@//tools/stage0/phase10:hex2",
+            default = "//tools/stage0/phase10:hex2",
         ),
     },
     doc = """Compiles a hex2 program.""",

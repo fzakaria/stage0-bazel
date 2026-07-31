@@ -54,8 +54,7 @@ configure_package(
         "mpfr": "@mpfr-src//file",
         "mpc": "@mpc-src//file",
     },
-    patches = ["tools/pkg/gcc/" + patch for patch in PATCHES],
-    patch_labels = ["//tools/pkg/gcc:" + patch for patch in PATCHES],
+    patches = ["//tools/pkg/gcc:" + patch for patch in PATCHES],
     extra_setup = [
         # As in the C stage: configure builds these in-tree when it finds
         # them under these names, and they are unpacked as siblings.

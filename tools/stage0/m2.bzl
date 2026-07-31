@@ -53,7 +53,7 @@ m2_compile = rule(
             executable = True,
             cfg = "exec",
             doc = "M2 compiler to use.",
-            default = "@//tools/stage0/phase5:M2",
+            default = "//tools/stage0/phase5:M2",
         ),
         "defines": attr.string_dict(
             default = {},

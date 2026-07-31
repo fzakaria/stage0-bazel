@@ -211,7 +211,7 @@ m2_compile(
         "@bazel_tools//src/conditions:linux_x86_64": "amd64",
     }),
     is_debug = True,
-    compiler = "@//tools/stage0/phase15:M2-Planet",
+    compiler = "//tools/stage0/phase15:M2-Planet",
     defines = {
         "__linux__" : "1",
         "__x86_64__" : "1",

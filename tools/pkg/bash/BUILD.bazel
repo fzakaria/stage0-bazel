@@ -37,12 +37,6 @@ PATCHES = [
     "patches/dev-tty.patch",
 ]
 
-MAKEFILES = [
-    "mk/main.mk",
-    "mk/common.mk",
-    "mk/builtins.mk",
-]
-
 # The compiler as the makefiles invoke it. Every path appears once per
 # directory level, because make descends into the source tree and these are
 # relative to the execroot; the same reasoning as for PATH in kaem.bzl. A -I
@@ -79,16 +73,20 @@ write_file(
         "",
         "# Patch. -d keeps the directory change inside patch, so PATH -- whose",
         "# entries are relative to the execroot -- keeps working.",
+        "# Each file is named through a script variable rather than by",
+        "# path: a path that is right when this repository is the main one",
+        "# is wrong when it is a dependency, because everything moves under",
+        "# external/<module>+/ then.",
     ] + [
-        "patch -d %s -Np0 -i ../tools/pkg/bash/%s" % (PREFIX, p)
-        for p in PATCHES
+        "patch -d %s -Np0 -i ../${patch%d}" % (PREFIX, index)
+        for index in range(len(PATCHES))
     ] + [
         "",
         "# Configure. live-bootstrap's makefiles replace the generated ones,",
         "# and the three headers ./configure would write are empty here.",
-        "cp tools/pkg/bash/mk/main.mk %s/Makefile" % PREFIX,
-        "cp tools/pkg/bash/mk/builtins.mk %s/builtins/Makefile" % PREFIX,
-        "cp tools/pkg/bash/mk/common.mk %s/common.mk" % PREFIX,
+        "cp ${main_mk} %s/Makefile" % PREFIX,
+        "cp ${builtins_mk} %s/builtins/Makefile" % PREFIX,
+        "cp ${common_mk} %s/common.mk" % PREFIX,
         "catm %s/config.h" % PREFIX,
         "catm %s/include/version.h" % PREFIX,
         "catm %s/include/pipesize.h" % PREFIX,
@@ -109,12 +107,17 @@ write_file(
 kaem_run(
     name = "bash",
     script = "bash.kaem",
-    srcs = PATCHES + MAKEFILES + [
+    srcs = [
         "//tools/tcc:src",
         "//tools/mes:arch_headers",
         "//tools/mes:header_dir",
     ],
-    substitutions = {"tarball": "@bash-src//file"},
+    substitutions = {
+        "tarball": "@bash-src//file",
+        "main_mk": "mk/main.mk",
+        "builtins_mk": "mk/builtins.mk",
+        "common_mk": "mk/common.mk",
+    } | {"patch%d" % index: PATCHES[index] for index in range(len(PATCHES))},
     directory_substitutions = {
         "tcc_libs": "//tools/tcc:tcc_libs",
         "tcc_include": "//tools/tcc:src_include_dir",

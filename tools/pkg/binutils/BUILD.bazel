@@ -41,8 +41,7 @@ configure_package(
     prefix = "binutils-2.46.0",
     compression = "xz",
     libc_headers = LIBC_HEADERS_TOOLCHAIN,
-    patches = ["tools/pkg/binutils/" + patch for patch in PATCHES],
-    patch_labels = PATCHES,
+    patches = PATCHES,
     # binutils is what provides ar and ranlib, so its own build cannot use
     # them. tinycc is its own archiver and writes the index as it goes, which
     # is what ranlib would otherwise add.

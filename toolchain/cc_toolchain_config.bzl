@@ -18,10 +18,11 @@ directory this repository built.
 load("@bazel_tools//tools/build_defs/cc:action_names.bzl", "ACTION_NAMES")
 load(
     "@bazel_tools//tools/cpp:cc_toolchain_config_lib.bzl",
+    "action_config",
     "feature",
     "flag_group",
     "flag_set",
-    "tool_path",
+    "tool",
 )
 
 # The target triplet GCC was configured for, and its version. Both appear in
@@ -175,7 +176,34 @@ def _impl(ctx):
         feature(name = "supports_dynamic_linker", enabled = False),
     ]
 
-    driver = ctx.file.driver.path
+    # Which program runs each action, named by artifact rather than by path.
+    #
+    # A tool_path is the usual way to say this, and it cannot be used here: it
+    # is resolved against the package holding the cc_toolchain, and the result
+    # must be normalized. Every tool in this toolchain is a build artifact
+    # under bazel-out/, and when this repository is a dependency the package
+    # is external/<module>+ -- so the path would have to climb out with ../,
+    # which Bazel rejects. An action_config names the File itself and leaves
+    # Bazel to work out where it is.
+    action_configs = [
+        action_config(
+            action_name = name,
+            enabled = True,
+            tools = [tool(tool = ctx.file.driver)],
+        )
+        for name in _COMPILE_ACTIONS + _LINK_ACTIONS
+    ] + [
+        action_config(
+            action_name = ACTION_NAMES.cpp_link_static_library,
+            enabled = True,
+            tools = [tool(tool = ctx.file.ar)],
+        ),
+        action_config(
+            action_name = ACTION_NAMES.strip,
+            enabled = True,
+            tools = [tool(tool = ctx.file.strip)],
+        ),
+    ]
 
     return cc_common.create_cc_toolchain_config_info(
         ctx = ctx,
@@ -189,15 +217,7 @@ def _impl(ctx):
         abi_libc_version = "musl",
         cxx_builtin_include_directories = include_directories,
         features = features,
-        tool_paths = [
-            tool_path(name = "gcc", path = driver),
-            tool_path(name = "cpp", path = driver),
-            tool_path(name = "ld", path = ctx.file.ld.path),
-            tool_path(name = "ar", path = ctx.file.ar.path),
-            tool_path(name = "nm", path = ctx.file.nm.path),
-            tool_path(name = "objdump", path = ctx.file.objdump.path),
-            tool_path(name = "strip", path = ctx.file.strip.path),
-        ],
+        action_configs = action_configs,
     )
 
 stage0_cc_toolchain_config = rule(

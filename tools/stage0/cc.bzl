@@ -32,7 +32,7 @@ cc_compile = rule(
             executable = True,
             cfg = "exec",
             doc = "C compiler to use.",
-            default = "@//tools/stage0/phase4:cc_arch",
+            default = "//tools/stage0/phase4:cc_arch",
         ),
     },
     doc = """Compiles a C program; turns it into M1 assembly.""",

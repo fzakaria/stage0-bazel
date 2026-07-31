@@ -29,8 +29,7 @@ tcc_package(
     tarball = "@gnumake-src//file",
     prefix = "make-4.4.1",
     binary = "make",
-    patches = ["tools/pkg/gnumake/" + patch for patch in PATCHES],
-    patch_labels = PATCHES,
+    patches = PATCHES,
     tools = ["//tools/pkg/gnupatch:bin"],
     configure = [
         "catm make-4.4.1/src/config.h make-4.4.1/src/mkconfig.h make-4.4.1/src/mkcustom.h",
