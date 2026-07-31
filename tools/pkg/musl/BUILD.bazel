@@ -1,4 +1,21 @@
-"""musl 1.2.6.
+"""musl 1.2.6, built twice.
+
+Round one is compiled by the mes-libc tinycc, which is the only compiler
+available at that point and which miscompiles long double arithmetic:
+
+    long double y = 1.25L; y *= 0x1p28;     ->  0, not 335544320
+
+musl's printf scales through exactly that expression, so a round-one musl
+formats every floating-point number wrongly -- printf("%g", 5.0) gives
+5.21541e-07. That is what blocked GCC, by way of gawk, which stores all its
+numbers as doubles. See tools/tcc/musl/tests/printf_float.c.
+
+Round two is compiled by the tinycc built against round one. That compiler
+gets the same expression right, so the libc it produces formats correctly.
+It is the same shape as the tinycc self-rebuild chain: the first pass exists
+only to make the second possible.
+
+musl 1.2.6.
 
 The first C library in the chain that is not mes-libc. mes-libc exists to be
 small enough that mescc can compile it; it is not complete enough to build
@@ -11,7 +28,7 @@ sigsetjmp patch is not applied: it rewrites a jecxz in the i386 assembly, and
 this is an x86-64 build where that file is not compiled.
 """
 
-load("//tools/pkg:configure.bzl", "LIBC_HEADERS_OWN", "configure_package")
+load("//tools/pkg:configure.bzl", "LIBC_HEADERS_OWN", "LIBC_HEADERS_TOOLCHAIN", "configure_package")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -27,6 +44,71 @@ configure_package(
     # same-named file that does not define `hidden`, and the first
     # declaration using it fails to parse.
     libc_headers = LIBC_HEADERS_OWN,
+    # tinycc rejects _Complex outright -- tccgen.c answers the keyword with
+    # "not yet supported" and stops -- so the complex math cannot be compiled
+    # by the compiler available at this point. musl's makefile takes its
+    # source list from a wildcard, so removing the directory removes the
+    # functions; libc.a simply has no cexp and friends. Nothing between here
+    # and the C++ compiler uses complex arithmetic, and a later musl built by
+    # a real GCC would pick them back up.
+    extra_setup = [
+        "rm -rf src/complex",
+        # The x86-64 math routines are beyond this compiler in both forms:
+        # tinycc's assembler cannot parse the hand-written x87 long-double
+        # code, and the .c files there use SSE register constraints it does
+        # not implement. Every file in the directory has a portable C
+        # equivalent in src/math, which the build falls back to once the
+        # directory is gone; the arch versions are an optimisation, not a
+        # capability.
+        "rm -rf src/math/x86_64",
+        # ... and with the arch versions gone, the portable ld80 floorl is
+        # what printf uses to generate digits. tinycc miscompiles it --
+        # floorl(5.7) returns 4 -- so it is replaced with one that does no
+        # bit manipulation. See floorl.c.
+        "cp $root/tools/pkg/musl/floorl.c src/math/floorl.c",
+        "sed -i -e s/setjmp@PLT/setjmp/ src/signal/x86_64/sigsetjmp.s",
+        # memset, memcpy and memmove are hand-written x86-64 assembly here,
+        # and tinycc's assembler gets memset wrong: past the first few bytes
+        # it writes nothing. That is invisible until something depends on a
+        # large fill -- gnulib builds a regex fastmap with
+        # memset(fastmap, 1, 256), so `.` stopped matching any character
+        # above the first few and every `.*` collapsed to the empty match.
+        # The portable C versions in src/string are correct.
+        "rm -rf src/string/x86_64",
+        # untar does not preserve the executable bit, and the install rules
+        # run this script by path rather than through a shell.
+        "chmod +x tools/install.sh",
+    ],
+    configure_flags = [
+        "--build=x86_64-unknown-linux-gnu",
+        "--host=x86_64-unknown-linux-gnu",
+        # There is no dynamic loader in this world, and nothing to load one.
+        "--disable-shared",
+    ],
+    make_flags = [
+        # tinycc is its own archiver, and there is no ranlib at all yet:
+        # tcc -ar writes the index as it goes, so a second pass is a no-op.
+        "AR=\"tcc -ar\"",
+        "RANLIB=true",
+        # musl's thread-local storage support needs a __set_thread_area that
+        # tinycc cannot generate here. Nothing in the bootstrap is threaded.
+        "CFLAGS=-DSYSCALL_NO_TLS",
+    ],
+)
+
+configure_package(
+    name = "musl2",
+    srcs = ["floorl.c"],
+    tarball = "@musl-src//file",
+    prefix = "musl-1.2.6",
+    # musl ships a complete set of headers and its internal ones have to win.
+    # With mes-libc's on the path first, src/include/features.h loses to a
+    # same-named file that does not define `hidden`, and the first
+    # declaration using it fails to parse.
+    # Round two is compiled by the musl tinycc, which gets long double
+    # right. Its own headers still win: musl passes them as -I, and -I is
+    # searched before the compiler's system include path.
+    libc_headers = LIBC_HEADERS_TOOLCHAIN,
     # tinycc rejects _Complex outright -- tccgen.c answers the keyword with
     # "not yet supported" and stops -- so the complex math cannot be compiled
     # by the compiler available at this point. musl's makefile takes its
