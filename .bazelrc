@@ -37,3 +37,25 @@ test --test_env=PATH
 
 # //tools/verify:no_native_toolchain_test asserts the same invariant at
 # analysis time by walking the bootstrap graph; see that package for details.
+
+# Remote execution and caching via BuildBuddy, for the LLVM build only.
+#
+# Deliberately behind a --config rather than on by default. The bootstrap
+# proper is the claim this repository makes -- hex0 to a C++ compiler, on your
+# machine, from sources you can read -- and running it on someone else's
+# workers makes that claim rest on their container image instead. LLVM is
+# different: it is an ordinary Bazel build of an ordinary C++ project, it is
+# plausibly hours of compute, and nothing about it is load-bearing for trust.
+#
+#     bazelisk build --config=remote @llvm-project//clang
+build:remote --bes_results_url=https://app.buildbuddy.io/invocation/
+build:remote --bes_backend=grpcs://remote.buildbuddy.io
+common:remote --remote_cache=grpcs://remote.buildbuddy.io
+common:remote --remote_timeout=10m
+common:remote --remote_executor=grpcs://remote.buildbuddy.io
+
+# The BuildBuddy API key is a credential and does not belong in a tracked
+# file. It lives in .bazelrc.local, which .gitignore excludes:
+#
+#     common --remote_header=x-buildbuddy-api-key=<key>
+try-import %workspace%/.bazelrc.local

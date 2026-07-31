@@ -1,2 +1,6 @@
 bazel-*
 .bazelisk/
+
+# Per-checkout Bazel settings, imported by .bazelrc. Holds the BuildBuddy API
+# key, which is a credential and must not be committed.
+.bazelrc.local
