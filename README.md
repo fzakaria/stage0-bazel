@@ -117,7 +117,7 @@ so what they cover is the toolchain and everything under it:
 
      2467 built by this graph
      847 from a hash-pinned archive
-     35 checked in to this repository
+     36 checked in to this repository
 ```
 
 Two of those pinned files are worth naming, because they are shell scripts
