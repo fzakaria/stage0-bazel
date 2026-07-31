@@ -299,7 +299,11 @@ def configure_package(
         tcc_libs = "//tools/tcc/current:tcc_libs",
         tcc_include = "//tools/tcc/current:src_include_dir",
         tcc_src = "//tools/tcc/current:src",
-        toolchain = "//tools/tcc/musl:tcc-musl",
+        # Round two, not round one: the mes-libc tinycc miscompiles long
+        # double arithmetic, so a musl it builds formats floating point
+        # wrongly. See tools/pkg/musl.
+        toolchain = "//tools/tcc/musl:tcc-musl2",
+        toolchain_tcc = "//tools/tcc/musl:tcc2",
         tools = [],
         **kwargs):
     """Builds a package by running its own ./configure, make and make install.
@@ -342,6 +346,7 @@ def configure_package(
         tcc_libs: That compiler's library directory.
         tcc_include: That compiler's own include directory.
         tcc_src: The source tree those headers belong to, staged as inputs.
+        toolchain_tcc: The compiler inside `toolchain`, as an executable.
         tools: Extra tool directories to put on PATH.
         **kwargs: Passed through to the underlying kaem_run.
     """
@@ -430,7 +435,7 @@ def configure_package(
 
     tool_dir(
         name = name + "_tcc",
-        tools = {"tcc": "//tools/tcc/musl:tcc" if uses_toolchain else tcc},
+        tools = {"tcc": toolchain_tcc if uses_toolchain else tcc},
     )
 
     kaem_run(

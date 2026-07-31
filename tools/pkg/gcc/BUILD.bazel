@@ -9,26 +9,18 @@ The recipe is nixpkgs' minimal-bootstrap gcc/4.6.nix. gmp, mpfr and mpc are
 unpacked beside the GCC tree and linked into it under the names GCC's
 top-level configure looks for, so it builds them in-tree.
 
-Where it stands: everything configures, gmp, mpfr, mpc, zlib, libiberty and
-libcpp build, and the compiler's own sources are being compiled. It stops in
-gcc/config/i386/i386.h:539,
+Where it stands: the printf fault that blocked this is fixed (see
+tools/pkg/musl), and GCC now gets past gcc/config/i386/i386.h and deep into
+building the compiler. It stops linking build/gengtype:
 
-    #if TARGET_64BIT_DEFAULT
-    ../.././gcc/config/i386/i386.h:539: error: invalid constant in
-                                        preprocessor expression
+    tcc: error: undefined symbol 'lexer_line', 'yylex', 'yybegin'
 
-so tinycc's preprocessor cannot evaluate whatever TARGET_64BIT_DEFAULT
-expands to on this target. That is the next thing to look at: find the
-definition GCC generates for it and either simplify it or teach tinycc's
-#if evaluator the form it uses.
-
-Also still outstanding, though not yet reached:
-
-  - `cmp`, from diffutils, which is not built. GCC's configure and ld's
-    emultempl scripts both call it, and both currently carry on without it.
-  - untar leaves an @LongLink file when unpacking gcc-g++, so it does not
-    implement the GNU long-filename extension. That will matter for the C++
-    stage.
+Those live in gengtype-lex.c, which GCC ships pre-generated from
+gengtype-lex.l because flex is not assumed. So either that file is not being
+compiled or its object is not reaching the link -- most likely make thinks it
+needs regenerating, since untar gives every source the same timestamp, and
+the rule that would run flex is prefixed with - so its failure is ignored
+silently.
 
 Tagged manual until it builds.
 """

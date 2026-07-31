@@ -109,6 +109,10 @@ configure_package(
     # right. Its own headers still win: musl passes them as -I, and -I is
     # searched before the compiler's system include path.
     libc_headers = LIBC_HEADERS_TOOLCHAIN,
+    # Round one's compiler, not the default. The default is the compiler
+    # built from *this* package, which would be a cycle.
+    toolchain = "//tools/tcc/musl:tcc-musl",
+    toolchain_tcc = "//tools/tcc/musl:tcc",
     # tinycc rejects _Complex outright -- tccgen.c answers the keyword with
     # "not yet supported" and stops -- so the complex math cannot be compiled
     # by the compiler available at this point. musl's makefile takes its

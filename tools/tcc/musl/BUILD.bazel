@@ -183,6 +183,48 @@ tool_dir(
     tools = {"tcc": "//tools/tcc/current:tcc"},
 )
 
+# Round two, against the musl that round one's compiler built. The mes-libc
+# tinycc miscompiles long double arithmetic, so the musl it produces formats
+# floating point wrongly; this is the compiler that carries the corrected
+# libc. Everything downstream uses it.
+kaem_run(
+    name = "tcc-musl2",
+    script = "tcc_musl.kaem",
+    substitutions = {"driver": "tcc_musl_build.sh"},
+    directory_substitutions = {
+        "musl": "//tools/pkg/musl:musl2",
+        "src": "//tools/tcc/current:src",
+        "tccdefs": "//tools/tcc/current:tccdefs",
+    },
+    srcs = [
+        "//tools/tcc/current:src",
+        "//tools/tcc/current:config_h",
+        "//tools/pkg/musl:musl2",
+    ],
+    tools = [
+        ":round_one_tcc",
+        "//tools/pkg/coreutils:bin",
+        "//tools/pkg/bash:bin",
+        "//tools/mescc-tools-extra:bin",
+    ],
+)
+
+tool_dir(
+    name = "round_one_tcc",
+    tools = {"tcc": ":tcc"},
+)
+
+installed_program(
+    name = "tcc2",
+    package = ":tcc-musl2",
+    program = "tcc",
+)
+
+tool_dir(
+    name = "bin2",
+    tools = {"tcc": ":tcc2"},
+)
+
 installed_program(
     name = "tcc",
     package = ":tcc-musl",
