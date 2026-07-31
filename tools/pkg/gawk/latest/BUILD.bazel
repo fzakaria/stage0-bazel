@@ -1,4 +1,20 @@
-"""GNU awk 5.3.2, built by GNU awk 3.0.6. NOT BUILDING YET.
+"""GNU awk 5.3.2, built by GNU awk 3.0.6. BUILDS, BUT MISCOMPILED.
+
+It builds and passes the tests below, and it is still wrong. Running
+autoconf's subs.awk over GCC's Makefile.in, every substituted line comes out
+as the bare value with its left-hand side gone:
+
+    build_alias = @build_alias@      ->      x86_64-unknown-linux-gnu
+
+which make then rejects with "missing separator". subs.awk builds each line
+as substr(line, 1, len) value substr(line, len + keylen + 3) where
+len = length(field[1]), so a length() or substr() returning the wrong thing
+produces exactly this. That is the same family of fault as the memset and
+regex bugs already found: the program is fine, the compiler is not.
+
+So GCC cannot use this yet either. gawk 3.0.6 gets options.h wrong and this
+one gets config.status wrong.
+
 
 GCC generates its options.h with an awk script, and gawk 3.0.6 gets the
 arithmetic wrong:
@@ -7,10 +23,6 @@ arithmetic wrong:
 
 a float where a bit index belongs, which stops the GCC build at
 gcc/config/i386/i386.h:539. A newer awk is the fix.
-
-This does not build yet. It is blocked behind bash 5.3, whose own build
-fails intermittently at the link (see tools/pkg/bash/latest), so a run either
-never reaches gawk or reaches it with a different failure each time.
 """
 
 load("//tools/pkg:configure.bzl", "LIBC_HEADERS_TOOLCHAIN", "configure_package")
@@ -50,14 +62,12 @@ configure_package(
         "//tools/pkg/gnused/latest:bin",
         "//tools/pkg/gawk:bin",
     ],
-    tags = ["manual"],
 )
 
 installed_program(
     name = "gawk",
     package = ":gawk_dist",
     program = "gawk",
-    tags = ["manual"],
 )
 
 tool_dir(
@@ -66,7 +76,6 @@ tool_dir(
         "gawk": ":gawk",
         "awk": ":gawk",
     },
-    tags = ["manual"],
 )
 
 program_output_test(
@@ -75,7 +84,6 @@ program_output_test(
     arguments = ["'{ print $2 }'"],
     stdin = "alpha beta gamma",
     expected_output = "beta",
-    tags = ["manual"],
 )
 
 # The construct 3.0.6 could not parse: a string assignment continued onto the
@@ -85,5 +93,4 @@ program_output_test(
     program = ":gawk",
     arguments = ["'BEGIN { S[\"key\"]=\\\n\"value\"; print S[\"key\"] }'"],
     expected_output = "value",
-    tags = ["manual"],
 )

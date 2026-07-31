@@ -137,7 +137,7 @@ configure_package(
     tools = [
         "//tools/pkg/bash/latest:bin",
         "//tools/pkg/gnused/latest:bin",
-        "//tools/pkg/gawk:bin",
+        "//tools/pkg/gawk/latest:bin",
         "//tools/pkg/binutils:bin",
     ],
 )
