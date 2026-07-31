@@ -1,0 +1,19 @@
+"""An ordinary C++ binary and test. No rule here is specific to stage0-bazel."""
+
+cc_library(
+    name = "counter",
+    srcs = ["counter.cc"],
+    hdrs = ["counter.h"],
+)
+
+cc_binary(
+    name = "app",
+    srcs = ["app.cc"],
+    deps = [":counter"],
+)
+
+cc_test(
+    name = "counter_test",
+    srcs = ["counter_test.cc"],
+    deps = [":counter"],
+)

@@ -1,0 +1,16 @@
+# Refuse to auto-detect a host C++ toolchain, so that a failure to resolve the
+# bootstrapped one is loud rather than silently papered over by /usr/bin/cc.
+common --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1
+
+# Do not let the host environment into actions.
+build --incompatible_strict_action_env
+
+build --verbose_failures
+test --test_output=errors
+
+# Bazel's own test runner is a bash script, and --incompatible_strict_action_env
+# above pins PATH to /bin:/usr/bin:/usr/local/bin, where a NixOS machine has
+# nothing. Without the real PATH the runner cannot find the programs
+# generate-xml.sh calls and every cc_test dies with exit 127. The toolchain
+# itself is unaffected: it names each of its tools by artifact, never by PATH.
+test --test_env=PATH

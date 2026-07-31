@@ -175,6 +175,13 @@ it.
 Building your first target builds the whole bootstrap, which takes on the
 order of twenty minutes on a warm machine and is cached afterwards.
 
+`examples/consumer` is exactly the above as a runnable module — its own
+`MODULE.bazel`, a `cc_library`, a `cc_binary` and a `cc_test` — and it is
+worth running rather than only reading. It is the only thing that exercises
+the paths and labels this repository hands to a *consumer*, which is where a
+build that has only ever run as the main repository goes wrong; four such
+faults were found by running it.
+
 The lower-level tools are available under stable labels for anything that
 wants them directly: `@stage0-bazel//:hex2`, `//:M1`, `//:blood-elf`,
 `//:M2-Planet`, `//:M2-Mesoplanet`, `//:get_machine`, `//:kaem`, `//:mes`,

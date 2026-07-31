@@ -1,0 +1,21 @@
+"""A module that uses the bootstrapped toolchain, and nothing else.
+
+This is the smallest thing that demonstrates the claim in the top-level
+README: depend on stage0-bazel, register its toolchain, write an ordinary
+cc_binary. Nothing below mentions the bootstrap.
+
+The override points at the checkout two directories up so that the example
+tracks the repository it lives in. A real consumer drops the override and
+takes the module from the registry.
+"""
+
+module(name = "stage0-consumer", version = "0.0.1")
+
+bazel_dep(name = "stage0-bazel", version = "0.1.0")
+
+local_path_override(
+    module_name = "stage0-bazel",
+    path = "../..",
+)
+
+register_toolchains("@stage0-bazel//toolchain:cc")

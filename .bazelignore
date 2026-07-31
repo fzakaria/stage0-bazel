@@ -1,0 +1,4 @@
+# examples/consumer is a Bazel module of its own, with its own MODULE.bazel.
+# Without this the outer build would try to load it as a package of this
+# repository and complain about the nested module file.
+examples/consumer
