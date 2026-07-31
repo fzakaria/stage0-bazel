@@ -1,17 +1,16 @@
-"""GNU awk 5.3.2, built by GNU awk 3.0.6.
+"""GNU awk 5.3.2, built by GNU awk 3.0.6. NOT BUILDING YET.
 
-binutils and GCC come from a modern autoconf, whose config.status feeds awk a
-subs.awk that splits string assignments across lines. gawk 3.0.6 rejects
-that:
+GCC generates its options.h with an awk script, and gawk 3.0.6 gets the
+arithmetic wrong:
 
-    gawk: subs.awk:8: S["LTLIBOBJS"]=
-                                     ^ unexpected newline
+    #define OPTION_MASK_ISA_64BIT (1 << 2.08617e-07)
 
-so every configure past this point needs a newer awk. 3.0.6 is still what
-builds it, which is the only reason the older one exists.
+a float where a bit index belongs, which stops the GCC build at
+gcc/config/i386/i386.h:539. A newer awk is the fix.
 
-NOT REACHED YET: this needs the sed in tools/pkg/gnused/latest, which
-builds but is miscompiled -- see that package. Tagged manual until then.
+This does not build yet. It is blocked behind bash 5.3, whose own build
+fails intermittently at the link (see tools/pkg/bash/latest), so a run either
+never reaches gawk or reaches it with a different failure each time.
 """
 
 load("//tools/pkg:configure.bzl", "LIBC_HEADERS_TOOLCHAIN", "configure_package")
@@ -47,8 +46,9 @@ configure_package(
     # bootstrap one. That is the step still missing; see
     # tools/pkg/gnused/latest.
     tools = [
-        "//tools/pkg/gawk:bin",
+        "//tools/pkg/bash/latest:bin",
         "//tools/pkg/gnused/latest:bin",
+        "//tools/pkg/gawk:bin",
     ],
     tags = ["manual"],
 )
