@@ -21,7 +21,13 @@ before descending rather than trying to count `../`s.
 
 load("@bazel_skylib//rules:write_file.bzl", "write_file")
 load("//tools/stage0:files.bzl", "tool_dir")
-load("//tools/stage0:kaem.bzl", "kaem_run")
+load(
+    "//tools/stage0:kaem.bzl",
+    "MAKE_JOBS",
+    "MAKE_PARALLEL",
+    "MAKE_SERIAL",
+    "kaem_run",
+)
 
 # The decompressor for each archive format, as mescc-tools-extra names them.
 _DECOMPRESSORS = {
@@ -85,7 +91,7 @@ def _patch_variable(index):
     """
     return "patch%d" % index
 
-def _driver_lines(prefix, configure_flags, make_flags, build_targets, build_attempts, install_target, install_commands, cc, cc_flags, exports, extra_setup, libc_headers):
+def _driver_lines(prefix, configure_flags, make_flags, build_targets, build_attempts, install_target, install_commands, post_install_commands, cc, cc_flags, exports, extra_setup, libc_headers, make_concurrency):
     """Returns the bash driver that configures, builds and installs a package.
 
     Args:
@@ -103,6 +109,8 @@ def _driver_lines(prefix, configure_flags, make_flags, build_targets, build_atte
         install_commands: Shell lines that install the build products, used
             instead of running make when the install rules need tools that do
             not exist yet.
+        post_install_commands: Shell lines run after the install, to repair an
+            installed tree the package's own rules leave unusable.
         cc: The compiler command, when it is not tinycc. Empty means tinycc,
             which the driver spells out itself because it has to name the
             directories tinycc was built knowing.
@@ -110,6 +118,8 @@ def _driver_lines(prefix, configure_flags, make_flags, build_targets, build_atte
         exports: Shell assignments exported before ./configure runs.
         extra_setup: Shell lines run inside the tree before ./configure.
         libc_headers: One of _LIBC_HEADERS.
+        make_concurrency: MAKE_PARALLEL to build with -j, MAKE_SERIAL for one
+            recipe at a time.
 
     Returns:
         A list of shell lines.
@@ -209,6 +219,11 @@ def _driver_lines(prefix, configure_flags, make_flags, build_targets, build_atte
         lines.append("")
 
     lines += [
+        # How many recipes make may run at once. Empty for a serial build,
+        # which is what most of these packages get; see MAKE_JOBS in kaem.bzl
+        # for why the number is what it is.
+        "make_jobs=\"%s\"" % ("-j%d" % MAKE_JOBS if make_concurrency == MAKE_PARALLEL else ""),
+        "",
         "cd " + prefix,
         "",
         "# The timestamp every unpacked file is given below. It has to exist",
@@ -300,7 +315,9 @@ def _driver_lines(prefix, configure_flags, make_flags, build_targets, build_atte
     # binutils links its libraries into the tools, and the tools do not
     # resolve unless the libraries are finished first.
     for targets in (build_targets or [""]):
-        command = " ".join(["make", "SHELL=\"$bash_path\""] + make_flags +
+        # $make_jobs is unquoted deliberately: it is empty for a serial build,
+        # and an empty quoted word would be an argument make has to reject.
+        command = " ".join(["make", "$make_jobs", "SHELL=\"$bash_path\""] + make_flags +
                            ([targets] if targets else []))
         if build_attempts > 1:
             lines += [
@@ -329,6 +346,11 @@ def _driver_lines(prefix, configure_flags, make_flags, build_targets, build_atte
             " ".join(["make", "SHELL=\"$bash_path\"", install_target] + make_flags),
             "",
         ]
+
+    # Repairs to the installed tree, for a package whose own install rules
+    # leave it in a state this repository cannot use.
+    if post_install_commands:
+        lines += post_install_commands + [""]
     return lines
 
 def configure_package(
@@ -339,8 +361,10 @@ def configure_package(
         make_flags = [],
         build_targets = [],
         build_attempts = 1,
+        make_concurrency = MAKE_SERIAL,
         install_target = "install",
         install_commands = [],
+        post_install_commands = [],
         cc = "",
         cc_flags = [],
         exports = [],
@@ -351,6 +375,7 @@ def configure_package(
         patches = [],
         patch_strip = 1,
         extra_tarballs = {},
+        extra_tarball_compression = {},
         srcs = [],
         compression = "gz",
         decompressor = DECOMPRESS_SEED,
@@ -379,10 +404,17 @@ def configure_package(
         build_attempts: How many times to run make before giving up. Above
             one this works around a known flake; see build_attempts in the
             package that sets it.
+        make_concurrency: MAKE_PARALLEL to build with -j MAKE_JOBS and to
+            reserve that many CPUs from Bazel's pool, or MAKE_SERIAL for one
+            recipe at a time. Only the build runs in parallel; the install
+            does not, because it is short and its rules are the ones most
+            likely never to have been tried concurrently.
         install_target: The make target that installs.
         install_commands: Shell lines that install the build products, used
             instead of running make when the install rules need tools that do
             not exist yet.
+        post_install_commands: Shell lines run after the install, to repair an
+            installed tree the package's own rules leave unusable.
         cc: The compiler command, for a package built by something other than
             tinycc. Defaults to empty, which means tinycc pointed at the
             directories named by `libc_headers`.
@@ -407,6 +439,9 @@ def configure_package(
         extra_tarballs: Further archives unpacked beside the main one, as a
             map of script-variable name to label. A package like GCC ships
             its front ends and its arbitrary-precision libraries separately.
+        extra_tarball_compression: The compression of an entry in
+            `extra_tarballs`, for any that is not gzip. Same keys, values
+            "gz", "bz2" or "xz".
         srcs: Additional files the build reads.
         compression: Archive compression: "gz", "bz2" or "xz".
         decompressor: DECOMPRESS_SEED for mescc-tools-extra's inflate, or
@@ -429,6 +464,13 @@ def configure_package(
     if libc_headers == LIBC_HEADERS_NONE and not cc:
         fail("%s: libc_headers = LIBC_HEADERS_NONE stages none of the " % name +
              "directories tinycc needs, so it requires an explicit cc")
+    for archive, archive_compression in extra_tarball_compression.items():
+        if archive not in extra_tarballs:
+            fail("%s: extra_tarball_compression names %s, which is not an " %
+                 (name, archive) + "entry in extra_tarballs")
+        if archive_compression not in _DECOMPRESSORS:
+            fail("%s: unknown compression %s for %s" %
+                 (name, archive_compression, archive))
 
     write_file(
         name = name + "_driver",
@@ -441,11 +483,13 @@ def configure_package(
             build_attempts,
             install_target,
             install_commands,
+            post_install_commands,
             cc,
             cc_flags,
             exports,
             extra_setup,
             libc_headers,
+            make_concurrency,
         ),
     )
 
@@ -472,17 +516,27 @@ def configure_package(
             "",
         ]
 
-    # Further archives unpacked beside the main one. These always go through
-    # the built gzip: a package that ships several tarballs is late enough in
-    # the chain to have one.
+    # Further archives unpacked beside the main one, each with whatever
+    # compression it happens to ship with. GCC 4.6's support libraries were
+    # all gzip; 10.4's are two xz, one bzip2 and one gzip.
+    #
+    # A gzip archive goes through the gzip this repository built rather than
+    # the seed's inflate, which cannot read every stream a modern gzip writes,
+    # and gzip has no --output so the file is copied to a name it will accept.
+    # The seed's unbz2 and unxz take --file and --output directly.
     if extra_tarballs:
         lines.append("# Unpack the archives that travel with it.")
         for archive in sorted(extra_tarballs):
-            lines += [
-                "cp ${%s} %s.tar.gz" % (archive, archive),
-                "gzip -d %s.tar.gz" % archive,
-                "untar --file %s.tar" % archive,
-            ]
+            compression_kind = extra_tarball_compression.get(archive, "gz")
+            if compression_kind == "gz":
+                lines += [
+                    "cp ${%s} %s.tar.gz" % (archive, archive),
+                    "gzip -d %s.tar.gz" % archive,
+                ]
+            else:
+                lines.append("%s --file ${%s} --output %s.tar" %
+                             (_DECOMPRESSORS[compression_kind], archive, archive))
+            lines.append("untar --file %s.tar" % archive)
         lines.append("")
 
     # Each patch is named through a script variable rather than by path,
@@ -512,6 +566,14 @@ def configure_package(
 
     uses_toolchain = libc_headers == LIBC_HEADERS_TOOLCHAIN
     stages_nothing = libc_headers == LIBC_HEADERS_NONE
+
+    # Whether the built gzip has to be on PATH: either the main archive asked
+    # for it, or one of the extra archives is a .gz, which the unpack lines
+    # above decompress with it rather than with the seed's inflate.
+    needs_gnu_gzip = decompressor == DECOMPRESS_GNU or any([
+        extra_tarball_compression.get(archive, "gz") == "gz"
+        for archive in extra_tarballs
+    ])
 
     # A package that names its own compiler does not get tinycc on PATH; the
     # point of naming one is that this is not a tinycc build.
@@ -562,6 +624,7 @@ def configure_package(
         # this is where the tool list is longest, which is where kaem's
         # 4096-character limit on an environment variable bites first.
         path_levels = 1,
+        make_concurrency = make_concurrency,
         srcs = [
             name + "_build.sh",
         ] + libc_srcs + extra_directories.values() + extra_files.values() + srcs,
@@ -576,7 +639,7 @@ def configure_package(
             name + "_tcc",
         ]) + tools + ([
             "//tools/pkg/gzip:bin",
-        ] if (decompressor == DECOMPRESS_GNU or extra_tarballs) else []) + [
+        ] if needs_gnu_gzip else []) + [
             "//tools/pkg/coreutils:bin",
             "//tools/pkg/bash:bin",
             "//tools/pkg/gnugrep:bin",

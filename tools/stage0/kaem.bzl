@@ -16,6 +16,61 @@ run decides its own file names. Bazel models that as a TreeArtifact.
 
 load("//tools/stage0:files.bzl", "ToolDirInfo")
 
+# How many jobs a parallel make gets.
+#
+# One number serves two purposes and they have to be the same number: it is
+# what `make -j` is told, and it is how many CPUs the action reserves from
+# Bazel's local pool. If only the first were set, Bazel would still believe the
+# action costs one CPU and would schedule fifteen more beside it.
+#
+# Eight rather than every core on the machine. A build host has other actions
+# to run -- the bootstrap has long serial stretches where a second package can
+# proceed in parallel -- and GCC's link steps are where the memory goes, so
+# leaving headroom is worth more than the last few percent of a single package.
+MAKE_JOBS = 8
+
+# Roughly what one GCC compilation costs at peak, in megabytes. cc1plus on
+# LLVM-sized translation units is the worst case in this repository; declaring
+# it keeps Bazel from starting several parallel-make actions at once and
+# handing the whole set to the OOM killer.
+_MEGABYTES_PER_JOB = 1024
+
+# Whether a package's make runs one recipe at a time or MAKE_JOBS of them.
+#
+# Serial is the default because most of these packages are small and some are
+# old enough to have makefiles that were never tested in parallel. A package
+# opts in when it is big enough for the difference to matter, and says so.
+MAKE_SERIAL = "serial"
+
+MAKE_PARALLEL = "parallel"
+
+_MAKE_CONCURRENCY = [
+    MAKE_SERIAL,
+    MAKE_PARALLEL,
+]
+
+def _parallel_resources(os, inputs_size):
+    """Returns what a parallel-make action reserves from Bazel's local pool.
+
+    The signature is Bazel's: a resource_set callback cannot see the rule's
+    attributes, which is why the job count is a module constant rather than
+    something a caller can choose freely.
+
+    Args:
+        os: The execution platform's operating system. Unused; the bootstrap
+            builds on Linux only.
+        inputs_size: How many input files the action has. Unused; what this
+            action costs is set by the compiler it runs, not by the size of
+            the tree it reads.
+
+    Returns:
+        A resource dictionary for ctx.actions.run.
+    """
+    return {
+        "cpu": MAKE_JOBS,
+        "memory": MAKE_JOBS * _MEGABYTES_PER_JOB,
+    }
+
 # Prefixes that make an execroot-relative path work from a subdirectory. Three
 # levels covers every recursive make in the bootstrap; a prefix that resolves
 # to nothing is simply ignored by the tools that read these paths.
@@ -108,6 +163,11 @@ def _kaem_run_impl(ctx):
         env = env,
         mnemonic = "KaemRun",
         progress_message = "Running %{label} under kaem",
+        # A serial action keeps Bazel's default of one CPU; only a package
+        # that actually runs make in parallel asks for more.
+        resource_set = (
+            _parallel_resources if ctx.attr.make_concurrency == MAKE_PARALLEL else None
+        ),
     )
 
     return [DefaultInfo(files = depset([out]))]
@@ -134,6 +194,14 @@ kaem_run = rule(
         ),
         "env": attr.string_dict(
             doc = "Literal environment entries, applied after the substitutions.",
+        ),
+        "make_concurrency": attr.string(
+            default = MAKE_SERIAL,
+            values = _MAKE_CONCURRENCY,
+            doc = "MAKE_PARALLEL if the script runs make with -j MAKE_JOBS," +
+                  " so that the action reserves that many CPUs. This changes" +
+                  " only what Bazel reserves; the script itself has to pass" +
+                  " the flag, which configure_package does.",
         ),
         "path_levels": attr.int(
             default = len(RELATIVE_PREFIXES),
