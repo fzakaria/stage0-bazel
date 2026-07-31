@@ -162,6 +162,13 @@ PROGRAMS = [
     "cat",
     "chmod",
     "cp",
+    # GCC 10's support libraries need both of these from their configure
+    # scripts, and a missing one is quiet rather than fatal: mpfr and isl cut
+    # a version string apart and get `test: !=: unary operator expected`, and
+    # gmp probes the long double format by piping a value through od. Without
+    # them configure answers those questions wrongly rather than not at all.
+    "cut",
+    "od",
     "dirname",
     "echo",
     "expr",
