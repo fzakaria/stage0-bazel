@@ -70,6 +70,12 @@ configure_package(
     ],
     # A sed that gets autoconf's config.status substitution script right has
     # to come ahead of the bootstrap one; see tools/pkg/gnused/latest.
+    # tinycc's linker intermittently fails to pull a member out of a
+    # perfectly good libbuiltins.a, so make is retried. This is a workaround
+    # for a compiler bug, not a build-ordering fix; the docstring above says
+    # what is known about it. Retrying is safe because the failure is a link
+    # error with no output written.
+    build_attempts = 4,
     tools = [
         "//tools/pkg/gnused/latest:bin",
         "//tools/pkg/gawk:bin",

@@ -67,7 +67,7 @@ _LIBC_HEADERS = [
     LIBC_HEADERS_TOOLCHAIN,
 ]
 
-def _driver_lines(prefix, configure_flags, make_flags, build_targets, install_target, install_commands, cc_flags, exports, extra_setup, libc_headers):
+def _driver_lines(prefix, configure_flags, make_flags, build_targets, build_attempts, install_target, install_commands, cc_flags, exports, extra_setup, libc_headers):
     """Returns the bash driver that configures, builds and installs a package.
 
     Args:
@@ -77,6 +77,10 @@ def _driver_lines(prefix, configure_flags, make_flags, build_targets, install_ta
         build_targets: One string of make targets per build run, so that a
             package needing staged builds can have them. Empty means a single
             run of the makefile's default target.
+        build_attempts: How many times to run make before giving up. Above
+            one this works around a known flake rather than a real
+            dependency problem, and the package saying so should explain
+            which.
         install_target: The make target that installs, usually "install".
         install_commands: Shell lines that install the build products, used
             instead of running make when the install rules need tools that do
@@ -239,10 +243,23 @@ def _driver_lines(prefix, configure_flags, make_flags, build_targets, install_ta
     # binutils links its libraries into the tools, and the tools do not
     # resolve unless the libraries are finished first.
     for targets in (build_targets or [""]):
-        lines.append(
-            " ".join(["make", "SHELL=\"$bash_path\""] + make_flags +
-                     ([targets] if targets else [])),
-        )
+        command = " ".join(["make", "SHELL=\"$bash_path\""] + make_flags +
+                           ([targets] if targets else []))
+        if build_attempts > 1:
+            lines += [
+                "attempt=1",
+                "while true; do",
+                "  if %s; then break; fi" % command,
+                "  attempt=$((attempt + 1))",
+                "  if [ $attempt -gt %d ]; then" % build_attempts,
+                "    echo \"make failed %d times\" >&2" % build_attempts,
+                "    exit 1",
+                "  fi",
+                "  echo \"make failed, retrying ($attempt)\" >&2",
+                "done",
+            ]
+        else:
+            lines.append(command)
     lines.append("")
 
     # A package whose install rules need tools this bootstrap does not have
@@ -264,6 +281,7 @@ def configure_package(
         configure_flags = [],
         make_flags = [],
         build_targets = [],
+        build_attempts = 1,
         install_target = "install",
         install_commands = [],
         cc_flags = [],
@@ -295,6 +313,9 @@ def configure_package(
         build_targets: One string of make targets per build run, so that a
             package needing staged builds can have them. Empty means a single
             run of the makefile's default target.
+        build_attempts: How many times to run make before giving up. Above
+            one this works around a known flake; see build_attempts in the
+            package that sets it.
         install_target: The make target that installs.
         install_commands: Shell lines that install the build products, used
             instead of running make when the install rules need tools that do
@@ -339,6 +360,7 @@ def configure_package(
             configure_flags,
             make_flags,
             build_targets,
+            build_attempts,
             install_target,
             install_commands,
             cc_flags,
