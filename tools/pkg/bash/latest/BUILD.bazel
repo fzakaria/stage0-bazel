@@ -11,22 +11,21 @@ get from kaem to here, and this is the last thing it builds.
 It needs the sed from tools/pkg/gnused/latest, because config.status is
 assembled by one sed piped into another and sed 4.0.9 cannot run N on stdin.
 
-KNOWN FLAKY, and the fault is in tinycc's linker, not in the archive.
-
-Roughly half of runs fail at the link with symbols from
+This used to fail about half the time, at the link, with symbols from
 builtins/libbuiltins.a undefined -- internal_getopt, reset_internal_getopt,
-lcurrent, loptend. A retry usually succeeds.
+lcurrent, loptend -- and was worked around by retrying make up to four times.
+The archive was never the problem: on a failing run libbuiltins.a was
+complete and contained the symbol.
 
-The archive is not the problem. On a failing run libbuiltins.a is complete:
-2.3 MB, and both it and builtins/bashgetopt.o contain internal_getopt. It is
-built by a single `$(RM) $@; $(AR) $(ARFLAGS) $@ $(OFILES)`, so tcc -ar's
-inability to append does not come into it, and tcc -ar's symbol index does
-grow correctly past its initial 250 entries.
+It was tinycc, and the fault was in the C library underneath it. mes-libc's
+qsort left an element equal to the pivot on the wrong side of the partition,
+and tccgen.c sorts a switch statement's cases and then binary-searches the
+result to emit the dispatch. A misordered table compiles a wide switch into
+code that takes the wrong branch, which is as arbitrary a fault as it sounds.
+See tools/mes/mes-libc/qsort.c.
 
-So tinycc reads a good archive and fails to pull the member that defines the
-symbol it is missing. That is where to look: tccelf.c's archive handling,
-and why it should depend on anything that varies between runs. Everything
-downstream -- gawk 5.3.2, and through it GCC -- is behind this.
+The retry is gone. Eight from-scratch builds since the fix have all linked
+first time.
 """
 
 load("//tools/pkg:configure.bzl", "DECOMPRESS_GNU", "LIBC_HEADERS_TOOLCHAIN", "configure_package")
@@ -69,12 +68,6 @@ configure_package(
     ],
     # A sed that gets autoconf's config.status substitution script right has
     # to come ahead of the bootstrap one; see tools/pkg/gnused/latest.
-    # tinycc's linker intermittently fails to pull a member out of a
-    # perfectly good libbuiltins.a, so make is retried. This is a workaround
-    # for a compiler bug, not a build-ordering fix; the docstring above says
-    # what is known about it. Retrying is safe because the failure is a link
-    # error with no output written.
-    build_attempts = 4,
     tools = [
         "//tools/pkg/gnused/latest:bin",
         "//tools/pkg/gawk:bin",
