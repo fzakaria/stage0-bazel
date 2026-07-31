@@ -43,6 +43,30 @@ write_file(
 )
 
 write_file(
+    name = "printf_float_driver",
+    out = "printf_float_build.sh",
+    content = [
+        "set -eu",
+        "",
+        "root=\"$PWD\"",
+        "out=\"$root/$out\"",
+        "toolchain=\"$root/$toolchain\"",
+        "",
+        "mkdir -p \"$out/bin\"",
+        " ".join([
+            "\"$toolchain/bin/tcc\"",
+            "-B \"$toolchain/lib\"",
+            "-I \"$toolchain/include\"",
+            "-static",
+            "-o \"$out/bin/hello\"",
+            "$root/$source",
+        ]),
+        "chmod 555 \"$out/bin/hello\"",
+        "",
+    ],
+)
+
+write_file(
     name = "kaem_script",
     out = "hello.kaem",
     content = [
@@ -78,4 +102,45 @@ program_output_test(
     name = "hello_test",
     program = ":hello",
     expected_output = "hello from musl, 4",
+)
+
+# printf's floating-point conversions are wrong in this toolchain, and that
+# is what blocks GCC. See printf_float.c for the full account. This test
+# states what correct output looks like and is tagged manual because it does
+# not pass yet: run it directly to reproduce.
+kaem_run(
+    name = "printf_float_pkg",
+    script = "hello.kaem",
+    substitutions = {
+        "driver": "printf_float_build.sh",
+        "source": "printf_float.c",
+    },
+    directory_substitutions = {"toolchain": "//tools/tcc/musl:tcc-musl"},
+    srcs = ["//tools/tcc/musl:tcc-musl"],
+    tools = [
+        "//tools/pkg/coreutils:bin",
+        "//tools/pkg/bash:bin",
+        "//tools/mescc-tools-extra:bin",
+    ],
+    tags = ["manual"],
+)
+
+installed_program(
+    name = "printf_float",
+    package = ":printf_float_pkg",
+    program = "hello",
+    tags = ["manual"],
+)
+
+program_output_test(
+    name = "printf_float_test",
+    program = ":printf_float",
+    expected_output = """int 42
+long 42
+string ok
+g 5
+e 5.000000e+00
+f 5.000000
+long double 5""",
+    tags = ["manual"],
 )

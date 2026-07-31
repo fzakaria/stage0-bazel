@@ -35,6 +35,16 @@ configure_package(
     # a real GCC would pick them back up.
     extra_setup = [
         "rm -rf src/complex",
+        # NOTE: removing this directory is very likely what breaks printf's
+        # floating-point conversions, which is the fault now blocking GCC.
+        # See tools/tcc/musl/tests/printf_float.c. musl's printf converts
+        # through long double and leans on frexpl, floorl and fmodl; with
+        # the arch versions gone it gets the portable ld80 ones, and %g comes
+        # out about 9.6e6 times too small. Restoring these needs tinycc to
+        # cope with x87 assembly and SSE register constraints, so the fix is
+        # more likely to be in the portable implementations or in tinycc's
+        # own long double arithmetic.
+        #
         # The x86-64 math routines are beyond this compiler in both forms:
         # tinycc's assembler cannot parse the hand-written x87 long-double
         # code, and the .c files there use SSE register constraints it does
