@@ -23,6 +23,7 @@ load(
     "flag_group",
     "flag_set",
     "tool",
+    "variable_with_value",
 )
 
 # The target triplet GCC was configured for, and its version. Both appear in
@@ -54,17 +55,6 @@ _LINK_ACTIONS = [
 ]
 
 def _impl(ctx):
-    # Every tool here is a build artifact, so its path is relative to the
-    # execroot. Bazel resolves a tool path against the package holding the
-    # cc_toolchain and then insists the result be normalized, so the two only
-    # agree when that package is the root one -- climbing out with ../ is
-    # rejected. Both the toolchain and this configuration therefore live in
-    # //, and the paths below are used exactly as Bazel reports them.
-    if ctx.label.package:
-        fail("%s must be in the root package: a tool path is resolved " % ctx.label +
-             "against it, and only there does an execroot-relative path " +
-             "resolve to itself")
-
     gcc_tree = ctx.file.gcc_tree
     musl_tree = ctx.file.musl_tree
     binutils_tree = ctx.file.binutils_tree
@@ -166,6 +156,49 @@ def _impl(ctx):
                 ),
             ],
         ),
+        # What the archiver is told. Bazel supplies these itself for a
+        # toolchain that does not name the archive action, but naming one --
+        # which is the only way to point at an archiver that is a build
+        # artifact -- replaces its version wholesale, flags included.
+        feature(
+            name = "archiver_flags",
+            enabled = True,
+            flag_sets = [
+                flag_set(
+                    actions = [ACTION_NAMES.cpp_link_static_library],
+                    flag_groups = [
+                        flag_group(
+                            # Replace rather than append, write an index, and
+                            # zero the timestamps and uids so that the same
+                            # objects give the same archive.
+                            flags = ["rcsD", "%{output_execpath}"],
+                            expand_if_available = "output_execpath",
+                        ),
+                        flag_group(
+                            iterate_over = "libraries_to_link",
+                            expand_if_available = "libraries_to_link",
+                            flag_groups = [
+                                flag_group(
+                                    flags = ["%{libraries_to_link.name}"],
+                                    expand_if_equal = variable_with_value(
+                                        name = "libraries_to_link.type",
+                                        value = "object_file",
+                                    ),
+                                ),
+                                flag_group(
+                                    flags = ["%{libraries_to_link.object_files}"],
+                                    iterate_over = "libraries_to_link.object_files",
+                                    expand_if_equal = variable_with_value(
+                                        name = "libraries_to_link.type",
+                                        value = "object_file_group",
+                                    ),
+                                ),
+                            ],
+                        ),
+                    ],
+                ),
+            ],
+        ),
         # Features Bazel looks for by name, declared so that cc_binary and
         # cc_library do not ask for behaviour this toolchain does not have.
         # static_link_cpp_runtimes is deliberately absent: it would have
@@ -243,11 +276,16 @@ stage0_cc_toolchain_config = rule(
             mandatory = True,
             doc = "The g++ driver, extracted from the GCC tree as one file.",
         ),
-        "ar": attr.label(allow_single_file = True, mandatory = True),
-        "ld": attr.label(allow_single_file = True, mandatory = True),
-        "nm": attr.label(allow_single_file = True, mandatory = True),
-        "objdump": attr.label(allow_single_file = True, mandatory = True),
-        "strip": attr.label(allow_single_file = True, mandatory = True),
+        "ar": attr.label(
+            allow_single_file = True,
+            mandatory = True,
+            doc = "The archiver, which builds a cc_library's .a.",
+        ),
+        "strip": attr.label(
+            allow_single_file = True,
+            mandatory = True,
+            doc = "The stripper, for a build that asks for stripped output.",
+        ),
     },
     provides = [CcToolchainConfigInfo],
     doc = "Configures a cc_toolchain around the GCC this repository builds.",

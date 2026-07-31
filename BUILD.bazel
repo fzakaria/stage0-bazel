@@ -4,11 +4,8 @@ Downstream modules should depend on these aliases rather than on the phase
 packages: which phase a tool comes from is an implementation detail of the
 bootstrap and moves as the chain grows.
 
-The C/C++ toolchain is registered here too, for a reason explained beside it.
+The C/C++ toolchain has a package of its own; see //toolchain.
 """
-
-load("//tools/pkg:defs.bzl", "installed_file")
-load("//toolchain:cc_toolchain_config.bzl", "stage0_cc_toolchain_config")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -93,104 +90,4 @@ alias(
 alias(
     name = "patch",
     actual = "//tools/pkg/gnupatch:patch",
-)
-
-# ---------------------------------------------------------------------------
-# The C/C++ toolchain.
-#
-# Registering this makes cc_library, cc_binary and cc_test work with a
-# compiler whose whole ancestry is in this repository. A module that depends
-# on stage0-bazel registers it for itself, because a registration in one
-# module does not reach another:
-#
-#     bazel_dep(name = "stage0-bazel", version = "0.1.0")
-#     register_toolchains("@stage0-bazel//:cc")
-#
-# The compiler is GCC 4.6.4 and the C library is musl 1.2.6, both built here;
-# see tools/pkg/gcc/cxx and tools/pkg/musl. Programs come out statically
-# linked, because there is no dynamic loader in this world to name.
-#
-# These targets are in the root package rather than in a package of their
-# own, and they have to be: a cc_toolchain's tool paths are resolved against
-# the package holding it, every tool here is a build artifact under
-# bazel-out/, and Bazel rejects the ../ that reaching bazel-out from any
-# other package would need.
-
-# The compiler tree, the C library and the binary utilities. Everything the
-# toolchain runs or reads comes out of these three.
-GCC_TREE = "//tools/pkg/gcc/cxx:gcc_cxx_dist"
-
-MUSL_TREE = "//tools/pkg/musl:musl3"
-
-BINUTILS_TREE = "//tools/pkg/binutils:binutils"
-
-# A tool path names one file, and a file inside a TreeArtifact cannot be
-# named. The driver is therefore extracted; it still needs the tree beside
-# it, because cc1plus and collect2 are found through the -B prefixes the
-# configuration adds rather than beside the driver.
-installed_file(
-    name = "g++",
-    package = GCC_TREE,
-    path = "bin/g++",
-)
-
-stage0_cc_toolchain_config(
-    name = "cc_config",
-    gcc_tree = GCC_TREE,
-    musl_tree = MUSL_TREE,
-    binutils_tree = BINUTILS_TREE,
-    driver = ":g++",
-    ar = "//tools/pkg/binutils:ar",
-    ld = "//tools/pkg/binutils:ld",
-    nm = "//tools/pkg/binutils:nm",
-    objdump = "//tools/pkg/binutils:objdump",
-    strip = "//tools/pkg/binutils:strip",
-)
-
-# Every input any toolchain action can need. The trees are listed whole: the
-# compiler reads its own headers and libraries out of them at run time, and
-# which files it touches depends on the source being compiled. The extracted
-# binaries are listed as well, because a tool path names one of those rather
-# than a path inside a tree.
-filegroup(
-    name = "cc_toolchain_files",
-    srcs = [
-        ":g++",
-        BINUTILS_TREE,
-        GCC_TREE,
-        MUSL_TREE,
-        "//tools/pkg/binutils:ar",
-        "//tools/pkg/binutils:ld",
-        "//tools/pkg/binutils:nm",
-        "//tools/pkg/binutils:objdump",
-        "//tools/pkg/binutils:strip",
-    ],
-)
-
-cc_toolchain(
-    name = "cc_toolchain",
-    all_files = ":cc_toolchain_files",
-    ar_files = ":cc_toolchain_files",
-    compiler_files = ":cc_toolchain_files",
-    dwp_files = ":cc_toolchain_files",
-    linker_files = ":cc_toolchain_files",
-    objcopy_files = ":cc_toolchain_files",
-    strip_files = ":cc_toolchain_files",
-    supports_param_files = 0,
-    toolchain_config = ":cc_config",
-    toolchain_identifier = "stage0-gcc-4.6.4",
-)
-
-toolchain(
-    name = "cc",
-    exec_compatible_with = [
-        "@platforms//cpu:x86_64",
-        "@platforms//os:linux",
-    ],
-    target_compatible_with = [
-        "@platforms//cpu:x86_64",
-        "@platforms//os:linux",
-    ],
-    toolchain = ":cc_toolchain",
-    toolchain_type = "@bazel_tools//tools/cpp:toolchain_type",
 )
