@@ -11,12 +11,22 @@ get from kaem to here, and this is the last thing it builds.
 It needs the sed from tools/pkg/gnused/latest, because config.status is
 assembled by one sed piped into another and sed 4.0.9 cannot run N on stdin.
 
-KNOWN FLAKY: this build intermittently fails at the link with symbols from
-builtins/libbuiltins.a undefined -- internal_getopt, lcurrent, loptend. A
-retry usually succeeds. The archive is created by a single
-`$(RM) $@; $(AR) $(ARFLAGS) $@ $(OFILES)`, so tcc -ar's inability to append
-does not explain it on its own, and the cause is not yet understood. It is
-worth chasing before anything depends on this being reproducible.
+KNOWN FLAKY, and the fault is in tinycc's linker, not in the archive.
+
+Roughly half of runs fail at the link with symbols from
+builtins/libbuiltins.a undefined -- internal_getopt, reset_internal_getopt,
+lcurrent, loptend. A retry usually succeeds.
+
+The archive is not the problem. On a failing run libbuiltins.a is complete:
+2.3 MB, and both it and builtins/bashgetopt.o contain internal_getopt. It is
+built by a single `$(RM) $@; $(AR) $(ARFLAGS) $@ $(OFILES)`, so tcc -ar's
+inability to append does not come into it, and tcc -ar's symbol index does
+grow correctly past its initial 250 entries.
+
+So tinycc reads a good archive and fails to pull the member that defines the
+symbol it is missing. That is where to look: tccelf.c's archive handling,
+and why it should depend on anything that varies between runs. Everything
+downstream -- gawk 5.3.2, and through it GCC -- is behind this.
 """
 
 load("//tools/pkg:configure.bzl", "DECOMPRESS_GNU", "LIBC_HEADERS_TOOLCHAIN", "configure_package")
