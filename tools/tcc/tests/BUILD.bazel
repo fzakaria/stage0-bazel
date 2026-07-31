@@ -109,3 +109,29 @@ program_output_test(
     program = ":setjmp",
     expected_output = "value ok\nframe ok",
 )
+
+# qsort decides more than sorting here: tinycc sorts a switch statement's
+# cases and binary-searches the result, so a wrong qsort miscompiles every
+# wide switch. See qsort.c.
+tcc_binary(
+    name = "qsort",
+    srcs = [
+        "qsort.c",
+        "//tools/mes:arch_headers",
+        "//tools/mes:header_dir",
+    ],
+    main = "tests/qsort.c",
+    include_dir_markers = [
+        "//tools/tcc:src/include/TCC_INCLUDEDIR",
+        "//tools/mes:include/MESCC_INCLUDEDIR",
+        "//tools/mes:headers/include/MES_INCLUDEDIR",
+    ],
+    libs = "//tools/tcc:tcc_libs",
+    tcc = "//tools/tcc:tcc",
+)
+
+program_output_test(
+    name = "qsort_test",
+    program = ":qsort",
+    expected_output = "qsort ok\nswitch ok",
+)

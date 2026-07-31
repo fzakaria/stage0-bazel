@@ -229,7 +229,11 @@ LIBC_SOURCES = [
     ":patched/vsnprintf.c",
     "@mes-m2//:lib/stdio/vsprintf.c",
     "@mes-m2//:lib/stdio/vsscanf.c",
-    "@mes-m2//:lib/stdlib/qsort.c",
+    # qsort is ours. Upstream's leaves an element equal to the pivot on the
+    # wrong side of the partition, so anything with a repeated value can come
+    # back unsorted -- which is how tinycc compiled switch statements into a
+    # binary search over a misordered table. See qsort.c.
+    "qsort.c",
     "@mes-m2//:lib/stdlib/strtod.c",
     "@mes-m2//:lib/stdlib/strtof.c",
     "@mes-m2//:lib/stdlib/strtol.c",
@@ -342,7 +346,10 @@ LIBC_SOURCES = [
     "@mes-m2//:lib/stub/system.c",
     "@mes-m2//:lib/stub/times.c",
     "@mes-m2//:lib/stub/ttyname.c",
-    "@mes-m2//:lib/stub/utime.c",
+    # utime is ours. Upstream's is a stub that issues no syscall and returns
+    # success, which makes `touch` a no-op -- and make is a program built out
+    # of timestamps. See utime.c.
+    "utime.c",
     "@mes-m2//:lib/linux/getegid.c",
     "@mes-m2//:lib/linux/geteuid.c",
     "@mes-m2//:lib/linux/getgid.c",

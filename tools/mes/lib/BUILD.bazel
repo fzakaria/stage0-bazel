@@ -303,7 +303,9 @@ mescc_archive(
         "@mes-m2//:lib/stdio/vsnprintf.c",
         "@mes-m2//:lib/stdio/vsprintf.c",
         "@mes-m2//:lib/stdio/vsscanf.c",
-        "@mes-m2//:lib/stdlib/qsort.c",
+        # The same corrected qsort the tinycc libc uses; upstream's is wrong
+        # for any input with a repeated value. See tools/mes/mes-libc/qsort.c.
+        "//tools/mes/mes-libc:qsort.c",
         "@mes-m2//:lib/stdlib/strtod.c",
         "@mes-m2//:lib/stdlib/strtof.c",
         "@mes-m2//:lib/stdlib/strtol.c",
