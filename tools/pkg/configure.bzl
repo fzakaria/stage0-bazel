@@ -61,13 +61,20 @@ LIBC_HEADERS_OWN = "own"
 # point use this rather than the scattered mes-libc directories.
 LIBC_HEADERS_TOOLCHAIN = "toolchain"
 
+# Nothing to stage: the package is built by a compiler that already knows
+# where its C library is, or ships the C library itself. Only a package
+# passing `cc` can use this, because the tinycc directories a default build
+# needs are not made available.
+LIBC_HEADERS_NONE = "none"
+
 _LIBC_HEADERS = [
     LIBC_HEADERS_MES,
     LIBC_HEADERS_OWN,
     LIBC_HEADERS_TOOLCHAIN,
+    LIBC_HEADERS_NONE,
 ]
 
-def _driver_lines(prefix, configure_flags, make_flags, build_targets, build_attempts, install_target, install_commands, cc_flags, exports, extra_setup, libc_headers):
+def _driver_lines(prefix, configure_flags, make_flags, build_targets, build_attempts, install_target, install_commands, cc, cc_flags, exports, extra_setup, libc_headers):
     """Returns the bash driver that configures, builds and installs a package.
 
     Args:
@@ -85,10 +92,13 @@ def _driver_lines(prefix, configure_flags, make_flags, build_targets, build_atte
         install_commands: Shell lines that install the build products, used
             instead of running make when the install rules need tools that do
             not exist yet.
+        cc: The compiler command, when it is not tinycc. Empty means tinycc,
+            which the driver spells out itself because it has to name the
+            directories tinycc was built knowing.
         cc_flags: Extra flags appended to the CC the package is given.
         exports: Shell assignments exported before ./configure runs.
         extra_setup: Shell lines run inside the tree before ./configure.
-        libc_headers: LIBC_HEADERS_MES or LIBC_HEADERS_OWN.
+        libc_headers: One of _LIBC_HEADERS.
 
     Returns:
         A list of shell lines.
@@ -144,30 +154,43 @@ def _driver_lines(prefix, configure_flags, make_flags, build_targets, build_atte
         "IFS=\"$saved_ifs\"",
         "export PATH=\"$absolute_path\"",
         "",
-        "# tinycc knows where its own headers live only because those paths",
-        "# were baked in when it was built; they still have to be named.",
-        "# tcc_include holds the compiler's own headers -- stdarg.h, stddef.h",
-        "# and the rest that belong to the compiler rather than to a libc --",
-        "# so it is needed whichever C library the package compiles against.",
-        " ".join(
-            [
-                "export CC=\"tcc",
-            ] + ([
-                # No -I for the C library here. The compiler was built
-                # knowing where musl's headers live, and finds them on its
-                # system include path -- which is searched after -I, so a
-                # package that ships gnulib replacements still gets its own.
-                "-B $root/$toolchain/lib",
-            ] if libc_headers == LIBC_HEADERS_TOOLCHAIN else [
-                "-B $root/$tcc_libs",
-                "-I $root/$tcc_include",
-            ] + ([
-                "-I $root/$mes_arch_include",
-                "-I $root/$mes_include",
-            ] if libc_headers == LIBC_HEADERS_MES else [])) + cc_flags,
-        ) + "\"",
-        "",
     ]
+
+    # A package built by something other than tinycc names its own compiler,
+    # and says where its C library is in its own exports. There is nothing
+    # for the driver to fill in on its behalf.
+    if cc:
+        lines += [
+            " ".join(["export CC=\"" + cc] + cc_flags) + "\"",
+            "",
+        ]
+    else:
+        lines += [
+            "# tinycc knows where its own headers live only because those",
+            "# paths were baked in when it was built; they still have to be",
+            "# named. tcc_include holds the compiler's own headers --",
+            "# stdarg.h, stddef.h and the rest that belong to the compiler",
+            "# rather than to a libc -- so it is needed whichever C library",
+            "# the package compiles against.",
+            " ".join(
+                [
+                    "export CC=\"tcc",
+                ] + ([
+                    # No -I for the C library here. The compiler was built
+                    # knowing where musl's headers live, and finds them on its
+                    # system include path -- which is searched after -I, so a
+                    # package that ships gnulib replacements still gets its own.
+                    "-B $root/$toolchain/lib",
+                ] if libc_headers == LIBC_HEADERS_TOOLCHAIN else [
+                    "-B $root/$tcc_libs",
+                    "-I $root/$tcc_include",
+                ] + ([
+                    "-I $root/$mes_arch_include",
+                    "-I $root/$mes_include",
+                ] if libc_headers == LIBC_HEADERS_MES else [])) + cc_flags,
+            ) + "\"",
+            "",
+        ]
 
     for export in exports:
         lines.append("export " + export)
@@ -307,9 +330,11 @@ def configure_package(
         build_attempts = 1,
         install_target = "install",
         install_commands = [],
+        cc = "",
         cc_flags = [],
         exports = [],
         extra_setup = [],
+        extra_directories = {},
         libc_headers = LIBC_HEADERS_MES,
         patches = [],
         patch_labels = [],
@@ -347,13 +372,21 @@ def configure_package(
         install_commands: Shell lines that install the build products, used
             instead of running make when the install rules need tools that do
             not exist yet.
+        cc: The compiler command, for a package built by something other than
+            tinycc. Defaults to empty, which means tinycc pointed at the
+            directories named by `libc_headers`.
         cc_flags: Extra flags appended to the CC the package is given.
         exports: Shell assignments exported before ./configure runs.
         extra_setup: Shell lines run inside the unpacked tree before
             ./configure, for the file shuffling some packages need.
+        extra_directories: Further directories the build reads, as a map of
+            script-variable name to label. A package built by GCC uses this
+            to name its C library, which the driver does not know about.
         libc_headers: LIBC_HEADERS_MES to compile against mes-libc's headers,
-            or LIBC_HEADERS_OWN for a package that ships its own C library
-            headers and must not see any others.
+            LIBC_HEADERS_OWN for a package that ships its own C library
+            headers and must not see any others, LIBC_HEADERS_TOOLCHAIN for
+            the musl tinycc's combined tree, or LIBC_HEADERS_NONE for a
+            package that names its own compiler and needs none of them.
         patches: Execroot-relative paths of patch files.
         patch_labels: The same patches as labels, so they reach the action.
         patch_strip: The -p level the patches are written against.
@@ -379,6 +412,9 @@ def configure_package(
         fail("decompressor must be one of %s, got %s" % (_DECOMPRESSOR_KINDS, decompressor))
     if libc_headers not in _LIBC_HEADERS:
         fail("libc_headers must be one of %s, got %s" % (_LIBC_HEADERS, libc_headers))
+    if libc_headers == LIBC_HEADERS_NONE and not cc:
+        fail("%s: libc_headers = LIBC_HEADERS_NONE stages none of the " % name +
+             "directories tinycc needs, so it requires an explicit cc")
 
     write_file(
         name = name + "_driver",
@@ -391,6 +427,7 @@ def configure_package(
             build_attempts,
             install_target,
             install_commands,
+            cc,
             cc_flags,
             exports,
             extra_setup,
@@ -455,11 +492,34 @@ def configure_package(
     )
 
     uses_toolchain = libc_headers == LIBC_HEADERS_TOOLCHAIN
+    stages_nothing = libc_headers == LIBC_HEADERS_NONE
 
-    tool_dir(
-        name = name + "_tcc",
-        tools = {"tcc": toolchain_tcc if uses_toolchain else tcc},
-    )
+    # A package that names its own compiler does not get tinycc on PATH; the
+    # point of naming one is that this is not a tinycc build.
+    if not cc:
+        tool_dir(
+            name = name + "_tcc",
+            tools = {"tcc": toolchain_tcc if uses_toolchain else tcc},
+        )
+
+    if stages_nothing:
+        libc_directories = {}
+        libc_srcs = []
+    elif uses_toolchain:
+        libc_directories = {"toolchain": toolchain}
+        libc_srcs = [toolchain]
+    else:
+        libc_directories = {
+            "tcc_libs": tcc_libs,
+            "tcc_include": tcc_include,
+            "mes_arch_include": "//tools/mes:arch_include_dir",
+            "mes_include": "//tools/mes:header_dir",
+        }
+        libc_srcs = [
+            tcc_src,
+            "//tools/mes:arch_headers",
+            "//tools/mes:header_dir",
+        ]
 
     kaem_run(
         name = name,
@@ -471,19 +531,10 @@ def configure_package(
             },
             **extra_tarballs
         ),
-        directory_substitutions = {"toolchain": toolchain} if uses_toolchain else {
-            "tcc_libs": tcc_libs,
-            "tcc_include": tcc_include,
-            "mes_arch_include": "//tools/mes:arch_include_dir",
-            "mes_include": "//tools/mes:header_dir",
-        },
+        directory_substitutions = dict(libc_directories, **extra_directories),
         srcs = patch_labels + [
             name + "_build.sh",
-        ] + ([toolchain] if uses_toolchain else [
-            tcc_src,
-            "//tools/mes:arch_headers",
-            "//tools/mes:header_dir",
-        ]) + srcs,
+        ] + libc_srcs + extra_directories.values() + srcs,
         # Order matters: earlier directories win. coreutils has to come before
         # mescc-tools-extra, whose rm, cp and mkdir are single-purpose
         # stand-ins that take no options -- `rm -f` reaches the wrong one
@@ -491,9 +542,9 @@ def configure_package(
         # A caller's extra tools come before the defaults so that a newer
         # build of something can replace the bootstrap one: sed 4.2 has to win
         # over sed 4.0.9 for any package whose configure autoconf generated.
-        tools = [
+        tools = ([] if cc else [
             name + "_tcc",
-        ] + tools + ([
+        ]) + tools + ([
             "//tools/pkg/gzip:bin",
         ] if (decompressor == DECOMPRESS_GNU or extra_tarballs) else []) + [
             "//tools/pkg/coreutils:bin",

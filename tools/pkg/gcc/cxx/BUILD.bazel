@@ -1,0 +1,153 @@
+"""GCC 4.6.4 again, this time with the C++ front end.
+
+The same source tree as tools/pkg/gcc, configured for c,c++ and built by the
+C compiler that came out of it rather than by tinycc. tinycc cannot compile
+C++ at all, so this second pass is how the chain acquires a C++ compiler; it
+is the step both reference bootstraps take, and the recipe is nixpkgs'
+minimal-bootstrap gcc/4.6.cxx.nix.
+
+It is built against musl3, the musl that GCC compiled. The tinycc-built musl
+carried the compiler this far but is missing the pieces tinycc could not
+build, and libstdc++ is the first thing in the chain to want them.
+
+Everything is linked statically, which is where this departs from nixpkgs:
+they point the compiler at musl's dynamic loader, and there is no shared musl
+here.
+"""
+
+load("//tools/pkg:configure.bzl", "DECOMPRESS_GNU", "LIBC_HEADERS_NONE", "configure_package")
+load("//tools/pkg:defs.bzl", "installed_program")
+load("//tools/verify:run_test.bzl", "program_output_test")
+
+package(
+    default_visibility = ["//visibility:public"],
+)
+
+# The same two patches the C stage needs, for the same two reasons.
+PATCHES = [
+    "patches/no-system-headers.patch",
+    "patches/install-headers-cp.patch",
+]
+
+configure_package(
+    name = "gcc_cxx_dist",
+    tarball = "@gcc-core-src//file",
+    prefix = "gcc-4.6.4",
+    libc_headers = LIBC_HEADERS_NONE,
+    # GCC finds cc1, cc1plus and its own libraries relative to the path it
+    # was invoked by, so it has to be named inside its installed tree.
+    # -static because musl here has no shared objects and there is no dynamic
+    # loader for a program to name.
+    cc = "$root/$gcc/bin/gcc",
+    cc_flags = [
+        "-static",
+        "-B$root/$musl/lib",
+    ],
+    extra_directories = {
+        "gcc": "//tools/pkg/gcc:gcc_dist",
+        "musl": "//tools/pkg/musl:musl3",
+    },
+    decompressor = DECOMPRESS_GNU,
+    extra_tarballs = {
+        "gpp": "@gcc-gpp-src//file",
+        "gmp": "@gmp-src//file",
+        "mpfr": "@mpfr-src//file",
+        "mpc": "@mpc-src//file",
+    },
+    patches = ["tools/pkg/gcc/" + patch for patch in PATCHES],
+    patch_labels = ["//tools/pkg/gcc:" + patch for patch in PATCHES],
+    extra_setup = [
+        # As in the C stage: configure builds these in-tree when it finds
+        # them under these names, and they are unpacked as siblings.
+        "ln -s ../gmp-4.3.2 gmp",
+        "ln -s ../mpfr-2.4.2 mpfr",
+        "ln -s ../mpc-1.0.3 mpc",
+        "printf 'const char *mpfr_get_patches (void) { return \"\"; }\n' > mpfr/get_patches.c",
+        # 4.6 predates musl, so a *-linux-musl host falls through to the
+        # gnu-linux case and libstdc++ compiles against glibc's os_defines.h.
+        # os/generic is the one that assumes nothing.
+        "sed -i -e 's|\"os/gnu-linux\"|\"os/generic\"|' libstdc++-v3/configure.host",
+    ],
+    exports = [
+        # binutils, rather than `tcc -ar`: there is a real assembler and a
+        # real linker by now, and libstdc++ needs an archive index.
+        "AR=ar",
+        "RANLIB=ranlib",
+        "CFLAGS=-O2",
+        # Where musl's headers are. The compiler cannot be told at configure
+        # time, because the path it would record is inside the build sandbox
+        # and does not exist afterwards; see --with-native-system-header-dir
+        # below. mpfr's sources include each other by bare name during the
+        # in-tree build.
+        "C_INCLUDE_PATH=\"$root/$musl/include:$PWD/mpfr/src\"",
+        "CPLUS_INCLUDE_PATH=\"$C_INCLUDE_PATH\"",
+        # GCC adds these to both its startfile and its library search, which
+        # is what makes crt1.o and libc.a findable.
+        "LIBRARY_PATH=\"$root/$musl/lib\"",
+        "lt_cv_shlibpath_overrides_runpath=yes",
+        # Probes that need to run a linked program to answer.
+        "ac_cv_func_memcpy=yes",
+        "ac_cv_func_strerror=yes",
+        # As in the C stage: --disable-dependency-tracking does not reach
+        # every subdirectory configure, and gcc3 is the only dependency style
+        # GCC's own macro accepts.
+        "enable_dependency_tracking=no",
+        "am_cv_CC_dependencies_compiler_type=gcc3",
+        "am_cv_CXX_dependencies_compiler_type=gcc3",
+    ],
+    configure_flags = [
+        "--build=x86_64-unknown-linux-gnu",
+        "--host=x86_64-unknown-linux-gnu",
+        # Deliberately a path that does not exist. A real one would be inside
+        # the build sandbox: GCC relocates the directories under its own
+        # prefix by comparing them against where it finds itself, but a
+        # system header directory outside the prefix is recorded verbatim and
+        # would point at a sandbox that is gone. Callers name musl's headers
+        # themselves -- see //toolchain.
+        "--with-native-system-header-dir=/include",
+        "--enable-languages=c,c++",
+        "--enable-checking=release",
+        "--disable-bootstrap",
+        "--disable-dependency-tracking",
+        "--disable-libgomp",
+        "--disable-libmudflap",
+        "--disable-libquadmath",
+        "--disable-libssp",
+        "--disable-libstdcxx-pch",
+        "--disable-lto",
+        "--disable-lto-plugin",
+        "--disable-multilib",
+        "--disable-nls",
+        "--disable-plugin",
+        # musl here is static only.
+        "--enable-static",
+        "--disable-shared",
+    ],
+    make_flags = ["MAKEINFO=true"],
+    tools = [
+        "//tools/pkg/binutils:bin",
+        "//tools/pkg/bash/latest:bin",
+        "//tools/pkg/gnused/latest:bin",
+        "//tools/pkg/gawk/latest:bin",
+        "//tools/pkg/diffutils:bin",
+    ],
+)
+
+installed_program(
+    name = "gcc",
+    package = ":gcc_cxx_dist",
+    program = "gcc",
+)
+
+installed_program(
+    name = "g++",
+    package = ":gcc_cxx_dist",
+    program = "g++",
+)
+
+program_output_test(
+    name = "gcc_cxx_version_test",
+    program = ":g++",
+    arguments = ["-dumpversion"],
+    expected_output = "4.6.4",
+)

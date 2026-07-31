@@ -1,4 +1,4 @@
-"""musl 1.2.6, built twice.
+"""musl 1.2.6, built three times.
 
 Round one is compiled by the mes-libc tinycc, which is the only compiler
 available at that point and which miscompiles long double arithmetic:
@@ -15,7 +15,12 @@ gets the same expression right, so the libc it produces formats correctly.
 It is the same shape as the tinycc self-rebuild chain: the first pass exists
 only to make the second possible.
 
-musl 1.2.6.
+Round three is compiled by GCC 4.6, and is the C library the C++ toolchain
+ships. Both tinycc rounds are missing pieces the compiler could not build:
+the complex math, the hand-written x86-64 string and math routines, and a
+floorl replaced because tinycc got the original wrong. GCC compiles all of
+them, so round three is a complete musl and nothing in it is a workaround.
+The recipe for it is nixpkgs' minimal-bootstrap musl/default.nix.
 
 The first C library in the chain that is not mes-libc. mes-libc exists to be
 small enough that mescc can compile it; it is not complete enough to build
@@ -28,7 +33,7 @@ sigsetjmp patch is not applied: it rewrites a jecxz in the i386 assembly, and
 this is an x86-64 build where that file is not compiled.
 """
 
-load("//tools/pkg:configure.bzl", "LIBC_HEADERS_OWN", "LIBC_HEADERS_TOOLCHAIN", "configure_package")
+load("//tools/pkg:configure.bzl", "LIBC_HEADERS_NONE", "LIBC_HEADERS_OWN", "LIBC_HEADERS_TOOLCHAIN", "configure_package")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -162,5 +167,45 @@ configure_package(
         # musl's thread-local storage support needs a __set_thread_area that
         # tinycc cannot generate here. Nothing in the bootstrap is threaded.
         "CFLAGS=-DSYSCALL_NO_TLS",
+    ],
+)
+
+# Round three, compiled by GCC 4.6 and linked by binutils. This is the musl
+# the C++ toolchain is built against and the one it links user programs
+# against, so it is the first one that has to be complete rather than merely
+# good enough to carry the bootstrap forward.
+configure_package(
+    name = "musl3",
+    tarball = "@musl-src//file",
+    prefix = "musl-1.2.6",
+    # musl ships its own headers and needs no others. GCC's own include
+    # directory holds only what belongs to a compiler -- stddef.h, stdarg.h
+    # and the rest -- and the system header directory it was configured with
+    # does not exist, so there is nothing to shadow musl's.
+    libc_headers = LIBC_HEADERS_NONE,
+    # GCC works out where cc1, the assembler and its own libraries are from
+    # the path it was invoked by, so it has to be named inside its installed
+    # tree rather than through a directory of symlinks holding the driver
+    # alone.
+    cc = "$root/$gcc/bin/gcc",
+    extra_directories = {"gcc": "//tools/pkg/gcc:gcc_dist"},
+    extra_setup = [
+        # untar does not preserve the executable bit, and the install rules
+        # run this script by path rather than through a shell.
+        "chmod +x tools/install.sh",
+    ],
+    configure_flags = [
+        "--build=x86_64-unknown-linux-gnu",
+        "--host=x86_64-unknown-linux-gnu",
+        # There is no dynamic loader in this world, and nothing to load one.
+        "--disable-shared",
+    ],
+    tools = [
+        # GCC drives the assembler and the linker itself, and looks for them
+        # on PATH once its own directories come up empty.
+        "//tools/pkg/binutils:bin",
+        "//tools/pkg/bash/latest:bin",
+        "//tools/pkg/gnused/latest:bin",
+        "//tools/pkg/gawk/latest:bin",
     ],
 )
