@@ -2,8 +2,33 @@
 
 module(name = "stage0-bazel")
 
-bazel_dep(name = "bazel_skylib", version = "1.7.1")
+bazel_dep(name = "bazel_skylib", version = "1.8.1")
 bazel_dep(name = "platforms", version = "0.0.11")
+
+# What LLVM's Bazel overlay declares for itself.
+#
+# The overlay is a module -- utils/bazel/MODULE.bazel says
+# module(name = "llvm-project-overlay") -- but it is not published to the BCR,
+# so it cannot be a bazel_dep. It is brought in as a repository rule instead
+# (see llvm_configure below), and a repository this module creates resolves
+# its dependencies against this module's repo names. So these have to be
+# declared here, spelled the way the overlay's own BUILD files spell them.
+#
+# protobuf, nanobind and vulkan_headers are deliberately absent: only MLIR and
+# the Python bindings reach them, and clang and lld build neither.
+bazel_dep(name = "rules_cc", version = "0.2.11")
+bazel_dep(name = "rules_python", version = "1.6.3")
+bazel_dep(name = "rules_shell", version = "0.6.1")
+bazel_dep(name = "zlib-ng", version = "2.0.7", repo_name = "llvm_zlib")
+
+# zlib-ng as the registry ships it shells out to cp, and cannot be included
+# with angle brackets, which is the only way LLVM includes it. See the patch.
+single_version_override(
+    module_name = "zlib-ng",
+    patch_strip = 1,
+    patches = ["//third_party:zlib-ng-no-host-tools.patch"],
+)
+bazel_dep(name = "zstd", version = "1.5.7", repo_name = "llvm_zstd")
 
 # The C/C++ toolchain this repository bootstraps. A module depending on
 # stage0-bazel has to register it for itself -- registrations do not
@@ -272,6 +297,49 @@ http_file(
     downloaded_file_path = "mpc-1.0.3.tar.gz",
 )
 
+# GCC 10.4.0, and its four support libraries. This is the compiler the
+# toolchain ships: 4.6 gives C++98 and enough of C++0x to prove the chain,
+# and 10.4 is the first release in it that provides the C++17 LLVM requires.
+# 10.5 is not usable -- it miscompiles under GCC 4.6, see GCC PR 110716 --
+# and the whole recipe is nixpkgs' minimal-bootstrap gcc/10.nix.
+http_file(
+    name = "gcc-latest-src",
+    sha256 = "c9297d5bcd7cb43f3dfc2fed5389e948c9312fd962ef6a4ce455cff963ebe4f1",
+    url = "https://mirror.team-cymru.com/gnu/gcc/gcc-10.4.0/gcc-10.4.0.tar.xz",
+    downloaded_file_path = "gcc-10.4.0.tar.xz",
+)
+
+# 6.2.1 is the last gmp that compiles with GCC 4.6. Do not bump it.
+http_file(
+    name = "gmp-latest-src",
+    sha256 = "fd4829912cddd12f84181c3451cc752be224643e87fac497b69edddadc49b4f2",
+    url = "https://mirror.team-cymru.com/gnu/gmp/gmp-6.2.1.tar.xz",
+    downloaded_file_path = "gmp-6.2.1.tar.xz",
+)
+
+http_file(
+    name = "mpfr-latest-src",
+    sha256 = "b67ba0383ef7e8a8563734e2e889ef5ec3c3b898a01d00fa0a6869ad81c6ce01",
+    url = "https://mirror.team-cymru.com/gnu/mpfr/mpfr-4.2.2.tar.xz",
+    downloaded_file_path = "mpfr-4.2.2.tar.xz",
+)
+
+http_file(
+    name = "mpc-latest-src",
+    sha256 = "ab642492f5cf882b74aa0cb730cd410a81edcdbec895183ce930e706c1c759b8",
+    url = "https://mirror.team-cymru.com/gnu/mpc/mpc-1.3.1.tar.gz",
+    downloaded_file_path = "mpc-1.3.1.tar.gz",
+)
+
+# isl is new at 10.4: 4.6 had no use for it. It is distributed from GCC's own
+# infrastructure directory rather than from a GNU mirror.
+http_file(
+    name = "isl-src",
+    sha256 = "fcf78dd9656c10eb8cf9fbd5f59a0b6b01386205fe1934b3b287a0a1898145c0",
+    url = "https://gcc.gnu.org/pub/gcc/infrastructure/isl-0.24.tar.bz2",
+    downloaded_file_path = "isl-0.24.tar.bz2",
+)
+
 # GNU binutils. The assembler and linker GCC needs; tinycc has its own of
 # both, but GCC will not use them.
 http_file(
@@ -289,4 +357,40 @@ http_file(
     sha256 = "d585fd3b613c66151fc3249e8ed44f77020cb5e6c1e635a616d3f9f82460512a",
     url = "https://musl.libc.org/releases/musl-1.2.6.tar.gz",
     downloaded_file_path = "musl-1.2.6.tar.gz",
+)
+
+# LLVM, for clang and lld.
+#
+# Not a bazel_dep: the Bazel build lives in utils/bazel inside the LLVM
+# source tree and is not published to any registry. The documented way in is
+# the one utils/bazel/examples/http_archive uses -- fetch the source, then
+# let llvm_configure symlink the overlay's BUILD files over it.
+#
+# llvm_configure has only a `targets` attribute and no patch hook, which is
+# why the Python patch goes on the archive rather than on the configure.
+LLVM_VERSION = "22.1.8"
+
+http_archive(
+    name = "llvm-raw",
+    build_file_content = "# empty",
+    sha256 = "ad18b70e287954c3d62bc7e0b86e7b7af2adf87bcfce21c15fe717f101d7aace",
+    url = "https://github.com/llvm/llvm-project/archive/refs/tags/llvmorg-%s.tar.gz" % LLVM_VERSION,
+    strip_prefix = "llvm-project-llvmorg-%s" % LLVM_VERSION,
+    patches = [
+        "//third_party:llvm-no-python.patch",
+        "//third_party:llvm-musl.patch",
+        "//third_party:llvm-version-suffix.patch",
+    ],
+    patch_args = ["-p1"],
+)
+
+llvm_configure = use_repo_rule("@llvm-raw//utils/bazel:configure.bzl", "llvm_configure")
+
+# X86 only. The default is every backend LLVM has, and each one is a large
+# amount of TableGen and generated code that this toolchain would have to
+# compile for nothing -- the compiler is being built to run here and target
+# here.
+llvm_configure(
+    name = "llvm-project",
+    targets = ["X86"],
 )

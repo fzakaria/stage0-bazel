@@ -17,6 +17,8 @@ here.
 
 load("//tools/pkg:configure.bzl", "DECOMPRESS_GNU", "LIBC_HEADERS_NONE", "configure_package")
 load("//tools/pkg:defs.bzl", "installed_program")
+load("//tools/pkg/gcc:defs.bzl", "MERGE_LIBSUPCXX_INTO_LIBSTDCXX", "stamp_support_libraries")
+load("//tools/stage0:kaem.bzl", "MAKE_PARALLEL")
 load("//tools/verify:run_test.bzl", "program_output_test")
 
 package(
@@ -61,6 +63,7 @@ configure_package(
         "ln -s ../gmp-4.3.2 gmp",
         "ln -s ../mpfr-2.4.2 mpfr",
         "ln -s ../mpc-1.0.3 mpc",
+    ] + stamp_support_libraries(["gmp", "mpfr", "mpc"]) + [
         "printf 'const char *mpfr_get_patches (void) { return \"\"; }\n' > mpfr/get_patches.c",
         # 4.6 predates musl, so a *-linux-musl host falls through to the
         # gnu-linux case and libstdc++ compiles against glibc's os_defines.h.
@@ -123,7 +126,13 @@ configure_package(
         "--disable-shared",
     ],
     make_flags = ["MAKEINFO=true"],
+    post_install_commands = MERGE_LIBSUPCXX_INTO_LIBSTDCXX,
+    # A whole GCC plus libstdc++, and the compiler building it is tinycc's
+    # output rather than a fast one. Long enough to be worth -j, which needs
+    # the make whose jobserver works; see //tools/pkg/gnumake/latest.
+    make_concurrency = MAKE_PARALLEL,
     tools = [
+        "//tools/pkg/gnumake/latest:bin",
         "//tools/pkg/binutils:bin",
         "//tools/pkg/bash/latest:bin",
         "//tools/pkg/gnused/latest:bin",

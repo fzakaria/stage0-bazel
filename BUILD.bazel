@@ -73,6 +73,12 @@ alias(
 # Building this asserts that nothing in the bootstrap graph runs a program the
 # graph did not build. Run it in CI.
 alias(
+    name = "trust-report-llvm",
+    actual = "//tools/verify:no_native_toolchain_llvm",
+    tags = ["manual"],
+)
+
+alias(
     name = "trust-report",
     actual = "//tools/verify:no_native_toolchain",
 )

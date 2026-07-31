@@ -1,4 +1,4 @@
-"""musl 1.2.6, built three times.
+"""musl 1.2.6, built four times.
 
 Round one is compiled by the mes-libc tinycc, which is the only compiler
 available at that point and which miscompiles long double arithmetic:
@@ -15,12 +15,17 @@ gets the same expression right, so the libc it produces formats correctly.
 It is the same shape as the tinycc self-rebuild chain: the first pass exists
 only to make the second possible.
 
-Round three is compiled by GCC 4.6, and is the C library the C++ toolchain
-ships. Both tinycc rounds are missing pieces the compiler could not build:
-the complex math, the hand-written x86-64 string and math routines, and a
-floorl replaced because tinycc got the original wrong. GCC compiles all of
-them, so round three is a complete musl and nothing in it is a workaround.
-The recipe for it is nixpkgs' minimal-bootstrap musl/default.nix.
+Round three is compiled by GCC 4.6. Both tinycc rounds are missing pieces the
+compiler could not build: the complex math, the hand-written x86-64 string and
+math routines, and a floorl replaced because tinycc got the original wrong.
+GCC compiles all of them, so round three is the first complete musl and
+nothing in it is a workaround. The recipe for it is nixpkgs'
+minimal-bootstrap musl/default.nix.
+
+Round four is compiled by GCC 10.4, which round three is what built. It is
+the C library the toolchain ships, so that the libc a user program links
+against and the compiler that compiles it came out of the same stage rather
+than four years of chain apart.
 
 The first C library in the chain that is not mes-libc. mes-libc exists to be
 small enough that mescc can compile it; it is not complete enough to build
@@ -203,6 +208,37 @@ configure_package(
     tools = [
         # GCC drives the assembler and the linker itself, and looks for them
         # on PATH once its own directories come up empty.
+        "//tools/pkg/binutils:bin",
+        "//tools/pkg/bash/latest:bin",
+        "//tools/pkg/gnused/latest:bin",
+        "//tools/pkg/gawk/latest:bin",
+    ],
+)
+
+# Round four, compiled by GCC 10.4. Round three carried the chain as far as
+# building this compiler, and the toolchain ships this one instead so that the
+# C library a user program links against was built by the compiler that
+# compiles it. Same sources and same flags as round three; only the compiler
+# differs.
+configure_package(
+    name = "musl4",
+    tarball = "@musl-src//file",
+    prefix = "musl-1.2.6",
+    libc_headers = LIBC_HEADERS_NONE,
+    cc = "$root/$gcc/bin/gcc",
+    extra_directories = {"gcc": "//tools/pkg/gcc/latest:gcc_latest_dist"},
+    extra_setup = [
+        # untar does not preserve the executable bit, and the install rules
+        # run this script by path rather than through a shell.
+        "chmod +x tools/install.sh",
+    ],
+    configure_flags = [
+        "--build=x86_64-unknown-linux-gnu",
+        "--host=x86_64-unknown-linux-gnu",
+        # There is no dynamic loader in this world, and nothing to load one.
+        "--disable-shared",
+    ],
+    tools = [
         "//tools/pkg/binutils:bin",
         "//tools/pkg/bash/latest:bin",
         "//tools/pkg/gnused/latest:bin",

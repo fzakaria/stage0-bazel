@@ -11,6 +11,7 @@ top-level configure looks for, so it builds them in-tree.
 """
 
 load("//tools/pkg:configure.bzl", "DECOMPRESS_GNU", "LIBC_HEADERS_TOOLCHAIN", "configure_package")
+load("//tools/pkg/gcc:defs.bzl", "stamp_support_libraries")
 load("//tools/pkg:defs.bzl", "installed_program")
 load("//tools/verify:run_test.bzl", "program_output_test")
 
@@ -47,6 +48,7 @@ configure_package(
         "ln -s ../gmp-4.3.2 gmp",
         "ln -s ../mpfr-2.4.2 mpfr",
         "ln -s ../mpc-1.0.3 mpc",
+    ] + stamp_support_libraries(["gmp", "mpfr", "mpc"]) + [
         # mpfr generates this from its PATCHES file, which the release
         # tarball does not carry. The contents are only reported by
         # mpfr_get_patches(), which nothing in a GCC build calls.

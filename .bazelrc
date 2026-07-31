@@ -59,3 +59,73 @@ common:remote --remote_executor=grpcs://remote.buildbuddy.io
 #
 #     common --remote_header=x-buildbuddy-api-key=<key>
 try-import %workspace%/.bazelrc.local
+
+# Building LLVM.
+#
+# Behind a --config because LLVM is not part of the bootstrap and is far and
+# away the longest thing here; `bazel test //...` should not wait on it.
+#
+#     bazelisk build --config=llvm @llvm-project//clang:clang
+#
+# The flags are LLVM's own generic_gcc set from utils/bazel/.bazelrc, which
+# does not reach us -- that file belongs to their repository and this build
+# consumes their sources through an http_archive. Their .bazelrc also sets
+# --force_pic, --features=layering_check and --process_headers_in_dependencies,
+# which are deliberately not copied: this toolchain declares no PIC support
+# and has no module maps, and none of the three is needed to produce a working
+# compiler.
+build:llvm --cxxopt=-std=c++17 --host_cxxopt=-std=c++17
+build:llvm --copt=-Wno-deprecated --host_copt=-Wno-deprecated
+build:llvm --copt=-Wno-unused-parameter --host_copt=-Wno-unused-parameter
+build:llvm --copt=-Wno-comment --host_copt=-Wno-comment
+build:llvm --copt=-Wno-maybe-uninitialized --host_copt=-Wno-maybe-uninitialized
+build:llvm --copt=-Wno-misleading-indentation --host_copt=-Wno-misleading-indentation
+build:llvm --cxxopt=-Wno-class-memaccess --host_cxxopt=-Wno-class-memaccess
+
+# Static only, which is what this toolchain can do anyway.
+build:llvm --dynamic_mode=off
+
+# zlib yes, zstd no.
+#
+# Both are optional in LLVM and the first instinct was to drop both, on the
+# grounds that a graph you can account for is the point of this repository.
+# That was wrong about zlib. binutils writes GCC's debug sections compressed,
+# and a linker without zlib cannot read one:
+#
+#     libstdc++.a(lt4-string-inst.o):(.debug_info) is compressed with
+#     ELFCOMPRESS_ZLIB, but lld is not built with zlib support
+#
+# The alternative was to build GCC's libraries with no debug info at all,
+# which is a worse trade: it costs every user of this toolchain the ability
+# to step into libstdc++, to save one small library that GCC's own output
+# requires anyway.
+#
+# zstd stays off. It answers ELFCOMPRESS_ZSTD, which nothing in this chain
+# emits, so it would be carried for nothing.
+build:llvm --@llvm-project//third-party:llvm_enable_zstd=false
+
+# The shell LLVM's genrules run.
+#
+# One host program, and only one. A genrule runs a shell, and Bazel wants that
+# shell as an absolute system path: sh_toolchain's `path` is a mandatory
+# string, and the shell is not a declared input of the action, so it cannot be
+# a build artifact the way every other tool here is. On NixOS Bazel's default
+# of /bin/bash does not even exist:
+#
+#     execvp(/bin/bash, ...): No such file or directory
+#
+# shell.nix sets BAZEL_SH, which is where the path comes from; there is
+# nothing to configure here. //:trust-report names it beside the hex0 seed
+# rather than passing over it.
+#
+# Nothing else is borrowed. PATH inside a genrule stays /bin:/usr/bin:
+# /usr/local/bin, which on this host is empty, so every genrule on the path to
+# clang either uses bash builtins or takes its tools from the bootstrap
+# through its `tools` attribute -- clang's builtin-header staging takes mkdir
+# and cp that way. See third_party/llvm-no-python.patch and
+# third_party/zlib-ng-no-host-tools.patch.
+#
+# Those genrules run here rather than on a remote worker, because BAZEL_SH
+# names this machine's nix store and a BuildBuddy container does not have it.
+# They only write small files, so nothing is lost.
+build:llvm --modify_execution_info=Genrule=+no-remote

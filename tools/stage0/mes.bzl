@@ -6,6 +6,8 @@ through `GUILE_LOAD_PATH`. Both have to point at paths inside the action's
 execroot, which is what `MesInfo` carries around.
 """
 
+load("//tools/stage0:exec.bzl", "BOOTSTRAP_EXECUTION_REQUIREMENTS")
+
 # Relative to MES_PREFIX, this is where mes looks for its boot files. Locating
 # any file under it is enough to recover the prefix itself.
 _BOOT_FILE = "mes/module/mes/boot-5.scm"
@@ -125,6 +127,7 @@ def run_mes(ctx, mes_info, arguments, inputs, outputs, mnemonic, progress_messag
         arguments = arguments,
         env = mes_env(mes_info),
         mnemonic = mnemonic,
+        execution_requirements = BOOTSTRAP_EXECUTION_REQUIREMENTS,
         progress_message = progress_message,
     )
 

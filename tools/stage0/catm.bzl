@@ -1,6 +1,8 @@
 """Rules for concatenating files via catm.
 """
 
+load("//tools/stage0:exec.bzl", "BOOTSTRAP_EXECUTION_REQUIREMENTS")
+
 def concatenate_files(ctx, srcs, tool, out):
     """Concatenate a series of files.
 
@@ -20,6 +22,7 @@ def concatenate_files(ctx, srcs, tool, out):
         executable = tool,
         arguments = [args],
         mnemonic = "Concatenate",
+        execution_requirements = BOOTSTRAP_EXECUTION_REQUIREMENTS,
     )
 
 def _cat_files_impl(ctx):

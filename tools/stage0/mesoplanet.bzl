@@ -8,6 +8,7 @@ through M2LIBC_PATH, so the action needs a directory of correctly-named tools
 rather than a set of file paths. `tool_dir` builds that directory.
 """
 
+load("//tools/stage0:exec.bzl", "BOOTSTRAP_EXECUTION_REQUIREMENTS")
 load("//tools/stage0:files.bzl", "ToolDirInfo")
 
 def _m2libc_root(ctx):
@@ -60,6 +61,7 @@ def _m2_mesoplanet_binary_impl(ctx):
             "M2LIBC_PATH": _m2libc_root(ctx),
         },
         mnemonic = "MesoplanetCompile",
+        execution_requirements = BOOTSTRAP_EXECUTION_REQUIREMENTS,
         progress_message = "Compiling %{label} with M2-Mesoplanet",
     )
 

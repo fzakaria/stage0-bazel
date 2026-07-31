@@ -2,6 +2,8 @@
 
 This uses the M1 binary rather than M0 which is more capable.
 """
+
+load("//tools/stage0:exec.bzl", "BOOTSTRAP_EXECUTION_REQUIREMENTS")
 def _m1_expand_impl(ctx):
     out = ctx.actions.declare_file(ctx.label.name)
     args = ctx.actions.args()
@@ -19,6 +21,7 @@ def _m1_expand_impl(ctx):
         executable = ctx.executable.tool,
         arguments = [args],
         mnemonic = "M1Expand",
+        execution_requirements = BOOTSTRAP_EXECUTION_REQUIREMENTS,
     )
 
     return [DefaultInfo(

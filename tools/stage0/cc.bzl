@@ -1,6 +1,8 @@
 """Rules for building c programs using cc_$arch.
 """
 
+load("//tools/stage0:exec.bzl", "BOOTSTRAP_EXECUTION_REQUIREMENTS")
+
 def _cc_compile_impl(ctx):
     out = ctx.actions.declare_file(ctx.label.name)
     args = ctx.actions.args()
@@ -13,6 +15,7 @@ def _cc_compile_impl(ctx):
         executable = ctx.executable._compiler,
         arguments = [args],
         mnemonic = "CCCompile",
+        execution_requirements = BOOTSTRAP_EXECUTION_REQUIREMENTS,
     )
 
     return [DefaultInfo(

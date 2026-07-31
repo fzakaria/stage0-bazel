@@ -1,0 +1,86 @@
+--- a/utils/bazel/llvm-project-overlay/clang/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/clang/BUILD.bazel
+@@ -3,7 +3,6 @@
+ # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+ 
+ load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
+-load("@rules_python//python:defs.bzl", "py_binary")
+ load(
+     "//:vars.bzl",
+     "LLVM_VERSION_MAJOR",
+@@ -620,14 +619,6 @@
+     cmd = "echo '#undef CLANG_REVISION' > $@",
+ )
+ 
+-py_binary(
+-    name = "bundle_resources",
+-    srcs = [
+-        "utils/bundle_resources.py",
+-    ],
+-    main = "utils/bundle_resources.py",
+-)
+-
+ cc_library(
+     name = "basic",
+     srcs = [
+@@ -987,8 +978,29 @@
+         "lib/Analysis/FlowSensitive/HTMLLogger.js",
+     ],
+     outs = ["lib/Analysis/FlowSensitive/HTMLLogger.inc"],
+-    cmd = "$(location :bundle_resources) $@ $(SRCS)",
+-    tools = [":bundle_resources"],
++    # Was clang/utils/bundle_resources.py, run as a py_binary: for each input,
++    # a char array named after the file with its dots turned into
++    # underscores, holding the file one raw-string line at a time. Doing it
++    # here instead means building clang needs no Python interpreter.
++    #
++    # Every command below is a bash builtin -- printf, mapfile, parameter
++    # expansion -- and that is deliberate. A genrule runs with PATH pinned to
++    # /bin:/usr/bin:/usr/local/bin, which on a NixOS host holds nothing, so
++    # reaching for basename, tr, cat or sed would fail; and each one reached
++    # for would be another host program this repository has not built. The
++    # shell itself is the one exemption, and it stays the only one.
++    #
++    # The empty element appended to `lines` reproduces the trailing empty
++    # string Python's str.split leaves on a file that ends with a newline,
++    # which all three of these do.
++    cmd = ("for src in $(SRCS); do " +
++           "base=$${src##*/}; " +
++           "printf 'const char %s[] = \\n' \"$${base//./_}\"; " +
++           "mapfile -t lines < \"$$src\"; " +
++           "lines+=(''); " +
++           "printf '  R\"x(%s)x\" \"\\\\n\"\\n' \"$${lines[@]}\"; " +
++           "printf '  ;\\n'; " +
++           "done > $@"),
+ )
+ 
+ cc_library(
+@@ -1689,13 +1701,26 @@
+     name = "builtin_headers_gen",
+     srcs = builtin_headers,
+     outs = [hdr.replace("lib/Headers/", "staging/include/") for hdr in builtin_headers],
++    # mkdir and cp come from the bootstrap rather than from the machine.
++    #
++    # A genrule runs with PATH pinned to /bin:/usr/bin:/usr/local/bin, which
++    # on a NixOS host is empty, so the original stopped with "mkdir: command
++    # not found". Naming them through the tools attribute stages them as real
++    # inputs of the action, the same way every other program in this build is
++    # named -- so the host shell stays the only thing borrowed from the
++    # machine. dirname is gone entirely: ${target%/*} is a bash builtin that
++    # says the same thing.
+     cmd = """
+        for src in $(SRCS); do
+          relsrc=$${src#*"$(WORKSPACE_ROOT)"/clang/lib/Headers}
+          target=$(@D)/staging/include/$$relsrc
+-         mkdir -p $$(dirname $$target)
+-         cp $$src $$target
++         $(location @stage0-bazel//tools/pkg/coreutils:mkdir) -p $${target%/*}
++         $(location @stage0-bazel//tools/pkg/coreutils:cp) $$src $$target
+        done""",
++    tools = [
++        "@stage0-bazel//tools/pkg/coreutils:mkdir",
++        "@stage0-bazel//tools/pkg/coreutils:cp",
++    ],
+     output_to_bindir = 1,
+     toolchains = [":workspace_root"],
+ )

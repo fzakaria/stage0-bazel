@@ -1,0 +1,33 @@
+Stop a release tarball reporting its version as "22.1.8None".
+
+utils/bazel/configure.bzl parses llvm/CMakeLists.txt for the version pieces
+and seeds each one with None. A release tarball never says
+
+    set(LLVM_VERSION_SUFFIX ...)
+
+because the suffix is what marks a development tree, so that entry stays
+None and PACKAGE_VERSION -- which is what clang --version prints -- comes out
+as "22.1.8None".
+
+The fix cannot be to seed the dict with "" instead: the parser uses
+`if c[k] != None: continue` to mean "already found", so a non-None seed would
+make it ignore a suffix that is genuinely set. Normalising after the parse
+leaves the git-checkout case alone.
+
+--- a/utils/bazel/configure.bzl
++++ b/utils/bazel/configure.bzl
+@@ -129,6 +129,14 @@
+         v = kv[i:].strip().partition(")")[0].partition(" ")[0]
+         c[k] = v
+ 
++    # A release tarball never says set(LLVM_VERSION_SUFFIX ...) -- the suffix
++    # is what marks a development tree -- so the parse above leaves it None
++    # and every string built from it below reads "22.1.8None". The parser
++    # treats a non-None value as "already found", so this cannot be the
++    # dict's initial value; it has to be normalised once parsing is done.
++    if c["LLVM_VERSION_SUFFIX"] == None:
++        c["LLVM_VERSION_SUFFIX"] = ""
++
+     # Synthesize `LLVM_VERSION` for convenience.
+     c["LLVM_VERSION"] = "{}.{}.{}".format(
+         c["LLVM_VERSION_MAJOR"],

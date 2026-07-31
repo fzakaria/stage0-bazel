@@ -2,6 +2,8 @@
 
 """
 
+load("//tools/stage0:exec.bzl", "BOOTSTRAP_EXECUTION_REQUIREMENTS")
+
 def _m2_compile_impl(ctx):
     out = ctx.actions.declare_file(ctx.label.name)
     args = ctx.actions.args()
@@ -22,6 +24,7 @@ def _m2_compile_impl(ctx):
         executable = ctx.executable.compiler,
         arguments = [args],
         mnemonic = "M2Compile",
+        execution_requirements = BOOTSTRAP_EXECUTION_REQUIREMENTS,
     )
 
     return [DefaultInfo(

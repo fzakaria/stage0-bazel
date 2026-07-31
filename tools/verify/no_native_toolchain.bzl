@@ -4,10 +4,11 @@ A bootstrap is only worth the name if the set of binaries it trusts is
 knowable. This aspect makes that set explicit: it walks every action reachable
 from a target and asserts that the program each action executes was itself
 produced by an earlier action in the same graph, with the single documented
-exception of the hand-auditable hex0 seed.
+exception of the hand-auditable hex0 seed, and -- where the LLVM graph is
+audited -- the shell a genrule runs.
 
-Any host compiler, assembler, linker or shell that crept into the graph shows
-up here as an executable living outside `bazel-out/`, and analysis fails.
+Any host compiler, assembler or linker that crept into the graph shows up here
+as an executable living outside `bazel-out/`, and analysis fails.
 """
 
 # Bazel places every generated file under this prefix. An action whose
@@ -19,6 +20,27 @@ _GENERATED_PREFIX = "bazel-out/"
 _SEED_SUFFIXES = [
     "POSIX/x86/hex0-seed",
     "POSIX/AMD64/hex0-seed",
+]
+
+# The shell a genrule runs.
+#
+# This is the one thing in the graph that cannot be a build artifact, and the
+# reason is structural rather than an oversight: Bazel takes the genrule shell
+# as an absolute system path, because sh_toolchain's `path` attribute is a
+# string and because the shell is not a declared input of the action. There is
+# nowhere to name a file this repository built.
+#
+# It is allowlisted narrowly. Only an action Bazel labelled Genrule may do it,
+# and only for a program named like a shell -- anything else absolute is still
+# a violation. The genrules themselves are held to the stricter line: every one
+# on the path to clang either uses bash builtins or takes its tools from the
+# bootstrap through its `tools` attribute, so the shell is all that is
+# borrowed. See third_party/llvm-no-python.patch.
+_GENRULE_MNEMONIC = "Genrule"
+
+_SHELL_BASENAMES = [
+    "bash",
+    "sh",
 ]
 
 # Actions Bazel performs itself (symlinking, writing a file, expanding a
@@ -42,9 +64,26 @@ TrustInfo = provider(
     fields = {
         "violations": "depset of strings describing actions that ran an untrusted program",
         "trusted_seeds": "depset of exec paths of allowlisted seed binaries that were executed",
+        "trusted_shells": "depset of exec paths of host shells a genrule ran",
         "inputs": "depset[File]: every file any action in the subgraph consumed",
     },
 )
+
+def _is_genrule_shell(mnemonic, program):
+    """Reports whether `program` is the shell Bazel gave a genrule.
+
+    Args:
+        mnemonic: The action's mnemonic.
+        program: The exec path of the program the action runs.
+
+    Returns:
+        True for an absolute path named like a shell, run by a genrule.
+    """
+    if mnemonic != _GENRULE_MNEMONIC:
+        return False
+    if not program.startswith("/"):
+        return False
+    return program.rsplit("/", 1)[-1] in _SHELL_BASENAMES
 
 def _is_seed(path):
     """Reports whether `path` is one of the allowlisted bootstrap seeds.
@@ -76,6 +115,7 @@ def _describe_violation(label, action, program):
 def _no_native_toolchain_aspect_impl(target, ctx):
     violations = []
     seeds = []
+    shells = []
     action_inputs = []
 
     # Inspect the program each action actually execs. Internal actions have an
@@ -101,23 +141,30 @@ def _no_native_toolchain_aspect_impl(target, ctx):
             seeds.append(program)
             continue
 
+        if _is_genrule_shell(action.mnemonic, program):
+            shells.append(program)
+            continue
+
         violations.append(_describe_violation(str(target.label), action, program))
 
     # Fold in whatever the dependencies found, so the root target sees the
     # verdict for the entire transitive graph.
     transitive_violations = []
     transitive_seeds = []
+    transitive_shells = []
     transitive_inputs = []
     for attr_name in dir(ctx.rule.attr):
         for dep in _deps_of(ctx.rule.attr, attr_name):
             if TrustInfo in dep:
                 transitive_violations.append(dep[TrustInfo].violations)
                 transitive_seeds.append(dep[TrustInfo].trusted_seeds)
+                transitive_shells.append(dep[TrustInfo].trusted_shells)
                 transitive_inputs.append(dep[TrustInfo].inputs)
 
     return [TrustInfo(
         violations = depset(violations, transitive = transitive_violations),
         trusted_seeds = depset(seeds, transitive = transitive_seeds),
+        trusted_shells = depset(shells, transitive = transitive_shells),
         inputs = depset(transitive = action_inputs + transitive_inputs),
     )]
 
@@ -154,9 +201,11 @@ no_native_toolchain_aspect = aspect(
 def _no_native_toolchain_audit_impl(ctx):
     violations = []
     seeds = []
+    shells = []
     for dep in ctx.attr.targets:
         violations.extend(dep[TrustInfo].violations.to_list())
         seeds.extend(dep[TrustInfo].trusted_seeds.to_list())
+        shells.extend(dep[TrustInfo].trusted_shells.to_list())
 
     # Fail during analysis rather than at test time: a host compiler in the
     # graph is a defect in the build description, not a runtime surprise.
@@ -172,7 +221,14 @@ def _no_native_toolchain_audit_impl(ctx):
             "Every action in the checked graph runs a program built by this",
             "repository, except for these audited seed binaries:",
             "",
-        ] + sorted(_unique(seeds)) + [""]),
+        ] + sorted(_unique(seeds)) + ([
+            "",
+            "and, for genrules only, the host shell. Bazel takes a genrule's",
+            "shell as an absolute system path, so it cannot be a file this",
+            "repository built. Nothing else is borrowed: every genrule here",
+            "uses bash builtins or tools from the bootstrap.",
+            "",
+        ] + sorted(_unique(shells)) if shells else []) + [""]),
     )
 
     return [DefaultInfo(files = depset([report]))]

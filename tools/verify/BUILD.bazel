@@ -19,9 +19,15 @@ no_native_toolchain_audit(
         # GCC, musl, binutils -- and through them the whole chain below.
         "//toolchain/tests:hello",
         "//toolchain/tests:greeting",
+        # The C++17 program, which only the shipped compiler can build. It
+        # reaches the same graph as the others and asserts it is the new one.
+        "//toolchain/tests:cxx17",
+        "//tools/pkg/gcc/latest:gcc_latest_dist",
+        "//tools/pkg/musl:musl4",
         "//tools/pkg/gcc/cxx:gcc_cxx_dist",
         "//tools/pkg/gcc:gcc",
         "//tools/pkg/musl:musl3",
+        "//tools/pkg/findutils:find",
         "//tools/pkg/binutils:binutils",
         "//tools/pkg/gnumake",
         "//tools/pkg/gnupatch",
@@ -45,6 +51,31 @@ no_native_toolchain_audit(
     ],
 )
 
+# The clang toolchain's graph, audited the same way.
+#
+# A separate target rather than more roots on the one above, and the reason is
+# cost rather than principle: the aspect has to analyse what it walks, and
+# analysing LLVM means fetching a 250 MB archive and configuring some eight
+# thousand targets. Folding that into //... would make every `bazel test //...`
+# pay for a compiler most runs do not build.
+#
+# It is the same standard, and it is the check that matters for clang -- if
+# the LLVM graph ever reaches for a host tool beyond the genrule shell, this
+# goes red. Run it with --config=llvm.
+no_native_toolchain_audit(
+    name = "no_native_toolchain_llvm",
+    # Out of //..., because an audit's roots are real dependencies: building
+    # this builds clang, and building clang without --config=llvm gets a
+    # compiler with no -std=c++17. Name it explicitly.
+    tags = ["manual"],
+    targets = [
+        # A C++ program compiled and linked through the clang toolchain
+        # reaches clang, lld, and everything the two are built from.
+        "@llvm-project//clang:clang",
+        "@llvm-project//lld:lld",
+    ],
+)
+
 # The same graph, reported as a statement about what the build trusts rather
 # than as a pass or fail.
 hermeticity_attestation(
@@ -54,6 +85,7 @@ hermeticity_attestation(
         # is built from is reachable from it.
         "//toolchain/tests:hello",
         "//toolchain/tests:greeting",
+        "//tools/pkg/gcc/latest:gcc_latest_dist",
         "//tools/pkg/gcc/cxx:gcc_cxx_dist",
         "//tools/pkg/gnumake",
         "//tools/pkg/gnupatch",

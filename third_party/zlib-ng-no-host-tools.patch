@@ -1,0 +1,59 @@
+Make zlib-ng usable from a build with no host tools on PATH, and let a
+dependent include it with <angle brackets>.
+
+Two unrelated problems in the BUILD file the registry adds.
+
+The zconf.h genrule shells out to cp. A genrule runs with PATH pinned to
+/bin:/usr/bin:/usr/local/bin, and a build that supplies its own tools rather
+than the machine's has nothing there -- on NixOS the directories are empty
+outright -- so it stops with "cp: command not found". The replacement is a
+bash builtin and needs no PATH at all.
+
+Separately, the file sets strip_include_prefix = "." and says it is there
+because "Clang includes zlib with angled instead of quoted includes". It does
+not achieve that: the target sits in its repository's root package, so the
+prefix strips nothing, Bazel builds no virtual include directory, and the only
+thing a dependent gets is the -iquote for the repository root it would have
+had regardless. LLVM is one such dependent and fails to build against it:
+
+    llvm/lib/Support/CRC.cpp:86:10: fatal error: zlib.h: No such file or
+    directory
+
+Adding `includes` puts the package on the system include path, which is what
+the angled form needs.
+
+--- a/BUILD.bazel
++++ b/BUILD.bazel
+@@ -11,7 +11,13 @@
+     name = "zconf_gen",
+     srcs = ["zconf.h.in"],
+     outs = ["zconf.h"],
+-    cmd = "cp $(SRCS) $(OUTS)",
++    # A bash builtin rather than cp, so that this needs nothing on PATH: a
++    # genrule here runs with PATH pinned to /bin:/usr/bin:/usr/local/bin,
++    # which on a NixOS host is empty, and the point of this repository is that
++    # the tools a build runs are ones it built. `read -d ""` reads to the
++    # first NUL, which a text header does not contain, so it slurps the file
++    # whole -- trailing newlines and all -- and returns non-zero at EOF.
++    cmd = "IFS= read -r -d '' zconf < $(SRCS) || true; printf '%s' \"$$zconf\" > $(OUTS)",
+ )
+ 
+ cc_library(
+@@ -80,5 +86,17 @@
+     # Clang includes zlib with angled instead of quoted includes, so we need
+     # strip_include_prefix here.
+     strip_include_prefix = ".",
++    # ... except that strip_include_prefix on a target in its repository's
++    # root package strips nothing, so Bazel builds no virtual include
++    # directory and passes no -I. All the dependent gets is the -iquote for
++    # the repository root that it would have had anyway, which answers
++    # "zlib.h" and not <zlib.h>:
++    #
++    #     llvm/lib/Support/CRC.cpp:86:10: fatal error: zlib.h: No such file
++    #     or directory
++    #
++    # includes puts the package on the system include path, which is what the
++    # angled form needs. Both spellings then work.
++    includes = ["."],
+     visibility = ["//visibility:public"],
+ )

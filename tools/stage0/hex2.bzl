@@ -2,6 +2,7 @@
 """
 
 load("//tools/stage0:catm.bzl", "concatenate_files")
+load("//tools/stage0:exec.bzl", "BOOTSTRAP_EXECUTION_REQUIREMENTS")
 
 def hex2_assemble(ctx, src, assembler, out):
     """
@@ -23,6 +24,7 @@ def hex2_assemble(ctx, src, assembler, out):
         executable = assembler,
         arguments = [args],
         mnemonic = "Hex2Assemble",
+        execution_requirements = BOOTSTRAP_EXECUTION_REQUIREMENTS,
     )
 
 def _hex2_binary_impl(ctx):

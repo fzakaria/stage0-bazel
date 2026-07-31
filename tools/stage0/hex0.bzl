@@ -1,6 +1,8 @@
 """Rules for building hex0 programs.
 """
 
+load("//tools/stage0:exec.bzl", "BOOTSTRAP_EXECUTION_REQUIREMENTS")
+
 def hex0_assemble(ctx, src, assembler, out):
     """
     Compile a hex0 program.
@@ -21,6 +23,7 @@ def hex0_assemble(ctx, src, assembler, out):
         executable = assembler,
         arguments = [args],
         mnemonic = "Hex0Assemble",
+        execution_requirements = BOOTSTRAP_EXECUTION_REQUIREMENTS,
     )
 
 def _hex0_binary_impl(ctx):

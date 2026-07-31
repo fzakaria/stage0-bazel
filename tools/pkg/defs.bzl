@@ -11,6 +11,7 @@ directory would strand `${out}` and the tools. Unpacking leaves the source
 tree under the execroot and the script addresses it by its prefix.
 """
 
+load("//tools/stage0:exec.bzl", "BOOTSTRAP_EXECUTION_REQUIREMENTS")
 load("@bazel_skylib//rules:write_file.bzl", "write_file")
 load("//tools/stage0:files.bzl", "tool_dir")
 load("//tools/stage0:kaem.bzl", "kaem_run")
@@ -269,6 +270,7 @@ def _extract(ctx, path):
         executable = ctx.executable._catm,
         arguments = [args],
         mnemonic = "ExtractProgram",
+        execution_requirements = BOOTSTRAP_EXECUTION_REQUIREMENTS,
     )
     return out
 

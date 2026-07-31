@@ -26,27 +26,40 @@ load(
     "variable_with_value",
 )
 
-# The target triplet GCC was configured for, and its version. Both appear in
-# the layout of the installed tree.
+# The target triplet GCC was configured for. It appears in the layout of the
+# installed tree, alongside the version, which is a rule attribute rather than
+# a constant: this repository builds two GCCs now, and the toolchain has to be
+# able to name either one.
 _TARGET = "x86_64-unknown-linux-gnu"
 
-_GCC_VERSION = "4.6.4"
-
-_GCC_TARGET_DIR = "%s/%s" % (_TARGET, _GCC_VERSION)
-
-# Every action that runs the compiler on a source file, and every action that
-# runs it to link. The driver is the same program for both.
-_COMPILE_ACTIONS = [
+# Compiling C and compiling C++ are separate here, and have to be.
+#
+# The driver decides the language from the file name, and g++ answers .c with
+# C++. That is invisible while everything being built is C++, which it was
+# until LLVM: llvm/lib/Support/regcomp.c is C, and C++ rejects the implicit
+# void* conversions C allows --
+#
+#     regcomp.c:1183:18: error: invalid conversion from 'void*' to 'cset*'
+#
+# so a C source has to reach gcc rather than g++. The C++ standard headers
+# are likewise only on the C++ include path; a C translation unit has no use
+# for them and should not be able to reach one by accident.
+_C_COMPILE_ACTIONS = [
     ACTION_NAMES.c_compile,
+    ACTION_NAMES.assemble,
+    ACTION_NAMES.preprocess_assemble,
+]
+
+_CXX_COMPILE_ACTIONS = [
     ACTION_NAMES.cpp_compile,
     ACTION_NAMES.cpp_header_parsing,
     ACTION_NAMES.cpp_module_compile,
     ACTION_NAMES.cpp_module_codegen,
-    ACTION_NAMES.assemble,
-    ACTION_NAMES.preprocess_assemble,
     ACTION_NAMES.linkstamp_compile,
     ACTION_NAMES.clif_match,
 ]
+
+_COMPILE_ACTIONS = _C_COMPILE_ACTIONS + _CXX_COMPILE_ACTIONS
 
 _LINK_ACTIONS = [
     ACTION_NAMES.cpp_link_executable,
@@ -58,37 +71,58 @@ def _impl(ctx):
     gcc_tree = ctx.file.gcc_tree
     musl_tree = ctx.file.musl_tree
     binutils_tree = ctx.file.binutils_tree
+    gcc_version = ctx.attr.gcc_version
+    gcc_target_dir = "%s/%s" % (_TARGET, gcc_version)
 
     # Where the pieces of the installed GCC live.
-    gcc_libexec = "%s/libexec/gcc/%s" % (gcc_tree.path, _GCC_TARGET_DIR)
-    gcc_lib = "%s/lib/gcc/%s" % (gcc_tree.path, _GCC_TARGET_DIR)
+    gcc_libexec = "%s/libexec/gcc/%s" % (gcc_tree.path, gcc_target_dir)
+    gcc_lib = "%s/lib/gcc/%s" % (gcc_tree.path, gcc_target_dir)
     binutils_bin = "%s/bin" % binutils_tree.path
 
-    # The include path, in the order the compiler should search it. These are
-    # also what Bazel checks every #include against, so the two lists have to
-    # be the same one.
-    include_directories = [
-        "%s/include/c++/%s" % (gcc_tree.path, _GCC_VERSION),
-        "%s/include/c++/%s/%s" % (gcc_tree.path, _GCC_VERSION, _TARGET),
-        "%s/include/c++/%s/backward" % (gcc_tree.path, _GCC_VERSION),
+    # libstdc++'s headers, which only a C++ translation unit sees.
+    cxx_include_directories = [
+        "%s/include/c++/%s" % (gcc_tree.path, gcc_version),
+        "%s/include/c++/%s/%s" % (gcc_tree.path, gcc_version, _TARGET),
+        "%s/include/c++/%s/backward" % (gcc_tree.path, gcc_version),
+    ]
+
+    # The compiler's own headers -- stddef.h, stdarg.h and the rest that
+    # belong to a compiler rather than to a libc -- and then musl's.
+    c_include_directories = [
         "%s/include" % gcc_lib,
         "%s/include-fixed" % gcc_lib,
         "%s/include" % musl_tree.path,
     ]
 
-    compile_flags = [
-        # Drop the compiler's built-in include path. What it holds is a
-        # directory inside the sandbox GCC was built in, which no longer
-        # exists, and /include, which never did.
+    # What Bazel checks every #include against. It has no notion of a
+    # per-language builtin include path, so this is the union.
+    include_directories = cxx_include_directories + c_include_directories
+
+    def include_flags(directories):
+        return [
+            flag
+            for directory in directories
+            for flag in ("-isystem", directory)
+        ]
+
+    # Common to both languages. -nostdinc drops the compiler's built-in
+    # include path: what it holds is a directory inside the sandbox GCC was
+    # built in, which no longer exists, and /include, which never did.
+    base_compile_flags = [
         "-nostdinc",
-    ] + [
-        flag
-        for directory in include_directories
-        for flag in ("-isystem", directory)
-    ] + [
+    ] + include_flags(c_include_directories) + [
         # cc1 and cc1plus.
         "-B" + gcc_libexec,
         # The assembler.
+        "-B" + binutils_bin,
+    ]
+
+    # The C++ headers come first, ahead of musl's, exactly as a normally
+    # installed GCC orders them.
+    cxx_compile_flags = [
+        "-nostdinc",
+    ] + include_flags(include_directories) + [
+        "-B" + gcc_libexec,
         "-B" + binutils_bin,
     ]
 
@@ -110,15 +144,18 @@ def _impl(ctx):
         "-L" + gcc_lib,
     ]
 
-    # The C++ runtime, named explicitly and in this order. libstdc++.a does
-    # not carry the libsupc++ objects -- the exception machinery, the type
-    # information and operator new -- so a link that only says -lstdc++ ends
-    # with __cxa_throw undefined. -lsupc++ has to follow it rather than
-    # precede it, because the members libstdc++ pulls in are what reference
-    # those symbols.
+    # The C++ runtime, named explicitly: Bazel's own way of adding it wants a
+    # static_runtime_lib on the cc_toolchain, and this is a link line the
+    # configuration already controls.
+    #
+    # -lsupc++ used to have to follow -lstdc++ here, because the libstdc++.a
+    # these packages installed did not carry the libsupc++ objects and a link
+    # saying only -lstdc++ ended with __cxa_throw undefined. The GCC packages
+    # now merge the two archives at install time, the way a normally
+    # configured GCC already does, so -lstdc++ is self-contained; see
+    # MERGE_LIBSUPCXX_INTO_LIBSTDCXX in //tools/pkg/gcc:defs.bzl.
     link_libs = [
         "-lstdc++",
-        "-lsupc++",
         "-lm",
     ]
 
@@ -128,8 +165,12 @@ def _impl(ctx):
             enabled = True,
             flag_sets = [
                 flag_set(
-                    actions = _COMPILE_ACTIONS,
-                    flag_groups = [flag_group(flags = compile_flags)],
+                    actions = _C_COMPILE_ACTIONS,
+                    flag_groups = [flag_group(flags = base_compile_flags)],
+                ),
+                flag_set(
+                    actions = _CXX_COMPILE_ACTIONS,
+                    flag_groups = [flag_group(flags = cxx_compile_flags)],
                 ),
             ],
         ),
@@ -222,9 +263,16 @@ def _impl(ctx):
         action_config(
             action_name = name,
             enabled = True,
+            tools = [tool(tool = ctx.file.c_driver)],
+        )
+        for name in _C_COMPILE_ACTIONS
+    ] + [
+        action_config(
+            action_name = name,
+            enabled = True,
             tools = [tool(tool = ctx.file.driver)],
         )
-        for name in _COMPILE_ACTIONS + _LINK_ACTIONS
+        for name in _CXX_COMPILE_ACTIONS + _LINK_ACTIONS
     ] + [
         action_config(
             action_name = ACTION_NAMES.cpp_link_static_library,
@@ -240,13 +288,13 @@ def _impl(ctx):
 
     return cc_common.create_cc_toolchain_config_info(
         ctx = ctx,
-        toolchain_identifier = "stage0-gcc-%s" % _GCC_VERSION,
+        toolchain_identifier = "stage0-gcc-%s" % gcc_version,
         host_system_name = _TARGET,
         target_system_name = _TARGET,
         target_cpu = "k8",
         target_libc = "musl",
         compiler = "gcc",
-        abi_version = "gcc-%s" % _GCC_VERSION,
+        abi_version = "gcc-%s" % gcc_version,
         abi_libc_version = "musl",
         cxx_builtin_include_directories = include_directories,
         features = features,
@@ -259,7 +307,12 @@ stage0_cc_toolchain_config = rule(
         "gcc_tree": attr.label(
             allow_single_file = True,
             mandatory = True,
-            doc = "The installed GCC tree, as built by //tools/pkg/gcc/cxx.",
+            doc = "The installed GCC tree, as built by //tools/pkg/gcc/latest.",
+        ),
+        "gcc_version": attr.string(
+            mandatory = True,
+            doc = "The compiler's version, which names directories inside the" +
+                  " installed tree. Must match what gcc_tree actually is.",
         ),
         "musl_tree": attr.label(
             allow_single_file = True,
@@ -274,7 +327,13 @@ stage0_cc_toolchain_config = rule(
         "driver": attr.label(
             allow_single_file = True,
             mandatory = True,
-            doc = "The g++ driver, extracted from the GCC tree as one file.",
+            doc = "The g++ driver, which compiles C++ and links everything.",
+        ),
+        "c_driver": attr.label(
+            allow_single_file = True,
+            mandatory = True,
+            doc = "The gcc driver. A C source compiled by g++ is compiled as" +
+                  " C++, which rejects what C allows.",
         ),
         "ar": attr.label(
             allow_single_file = True,

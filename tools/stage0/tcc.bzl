@@ -10,6 +10,8 @@ stage links against -- which is why there are two rules here.
 library output is a directory rather than a file list.
 """
 
+load("//tools/stage0:exec.bzl", "BOOTSTRAP_EXECUTION_REQUIREMENTS")
+
 def _library_dir(libs):
     """Returns the directory a tinycc `-B` flag should name.
 
@@ -127,6 +129,7 @@ def _tcc_binary_impl(ctx):
         executable = ctx.executable.tcc,
         arguments = [args],
         mnemonic = "TccLink",
+        execution_requirements = BOOTSTRAP_EXECUTION_REQUIREMENTS,
         progress_message = "Building %{label} with tinycc",
     )
 

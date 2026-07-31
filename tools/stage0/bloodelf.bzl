@@ -2,6 +2,8 @@
 
 """
 
+load("//tools/stage0:exec.bzl", "BOOTSTRAP_EXECUTION_REQUIREMENTS")
+
 def _blood_elf_impl(ctx):
     out = ctx.actions.declare_file(ctx.label.name)
     
@@ -22,6 +24,7 @@ def _blood_elf_impl(ctx):
         executable = ctx.executable.tool,
         arguments = [args],
         mnemonic = "BloodElf",
+        execution_requirements = BOOTSTRAP_EXECUTION_REQUIREMENTS,
     )
 
     return [DefaultInfo(

@@ -4,6 +4,8 @@ This uses the more advanced hex2 assembler.
 If you need the earlier stage checkout hex2.bzl
 """
 
+load("//tools/stage0:exec.bzl", "BOOTSTRAP_EXECUTION_REQUIREMENTS")
+
 def _hex2_binary_impl(ctx):
     out = ctx.actions.declare_file(ctx.label.name)
     args = ctx.actions.args()
@@ -22,6 +24,7 @@ def _hex2_binary_impl(ctx):
         executable = ctx.executable.tool,
         arguments = [args],
         mnemonic = "Hex2Assemble",
+        execution_requirements = BOOTSTRAP_EXECUTION_REQUIREMENTS,
     )
 
     return [DefaultInfo(

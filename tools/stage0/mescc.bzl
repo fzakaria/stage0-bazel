@@ -11,6 +11,7 @@ what upstream's `mesar` does, and catm from phase 2 does it without a shell.
 """
 
 load("//tools/stage0:catm.bzl", "concatenate_files")
+load("//tools/stage0:exec.bzl", "BOOTSTRAP_EXECUTION_REQUIREMENTS")
 load("//tools/stage0:mes.bzl", "MesInfo", "mes_env")
 
 # mescc reads C99 through nyacc and holds the whole AST in the mes heap. The
@@ -261,6 +262,7 @@ def _mescc_object_impl(ctx):
         arguments = [args],
         env = _mescc_env(mescc_info),
         mnemonic = "MesccCompile",
+        execution_requirements = BOOTSTRAP_EXECUTION_REQUIREMENTS,
         progress_message = "Compiling %{label} with mescc",
     )
 
@@ -394,6 +396,7 @@ def _mescc_binary_impl(ctx):
         arguments = [args],
         env = _mescc_env(mescc_info),
         mnemonic = "MesccLink",
+        execution_requirements = BOOTSTRAP_EXECUTION_REQUIREMENTS,
         progress_message = "Linking %{label} with mescc",
     )
 

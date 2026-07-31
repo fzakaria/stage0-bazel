@@ -14,6 +14,7 @@ The output is a directory rather than a set of files, because a `make install`
 run decides its own file names. Bazel models that as a TreeArtifact.
 """
 
+load("//tools/stage0:exec.bzl", "BOOTSTRAP_EXECUTION_REQUIREMENTS")
 load("//tools/stage0:files.bzl", "ToolDirInfo")
 
 # How many jobs a parallel make gets.
@@ -162,6 +163,7 @@ def _kaem_run_impl(ctx):
         arguments = ["--verbose", "--strict", "--file", ctx.file.script.path],
         env = env,
         mnemonic = "KaemRun",
+        execution_requirements = BOOTSTRAP_EXECUTION_REQUIREMENTS,
         progress_message = "Running %{label} under kaem",
         # A serial action keeps Bazel's default of one CPU; only a package
         # that actually runs make in parallel asks for more.

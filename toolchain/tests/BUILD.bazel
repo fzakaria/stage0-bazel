@@ -36,3 +36,23 @@ cc_test(
     srcs = ["greeting_test.cc"],
     deps = [":greeting"],
 )
+
+# The upgrade to GCC 10, asserted rather than described. Every construct in
+# the source is C++17, so a toolchain still pointed at 4.6 does not fail this
+# at run time -- it fails to compile it. GCC 10 defaults to gnu++14, hence the
+# explicit standard.
+#
+# A cc_binary and a program_output_test rather than a cc_test, because the
+# audits in //tools/verify are not test rules and so cannot depend on a
+# testonly target. hello is split the same way and for the same reason.
+cc_binary(
+    name = "cxx17",
+    srcs = ["cxx17.cc"],
+    copts = ["-std=c++17"],
+)
+
+program_output_test(
+    name = "cxx17_test",
+    program = ":cxx17",
+    expected_output = "c++17 ok",
+)

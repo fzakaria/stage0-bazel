@@ -1,6 +1,7 @@
 """Rules for expanding M0 files.
 """
 load("//tools/stage0:catm.bzl", "concatenate_files")
+load("//tools/stage0:exec.bzl", "BOOTSTRAP_EXECUTION_REQUIREMENTS")
 
 def _m0_expand_impl(ctx):
 
@@ -29,6 +30,7 @@ def _m0_expand_impl(ctx):
         executable = ctx.executable._tool,
         arguments = [args],
         mnemonic = "M0Expand",
+        execution_requirements = BOOTSTRAP_EXECUTION_REQUIREMENTS,
     )
 
     return [DefaultInfo(

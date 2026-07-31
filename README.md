@@ -25,7 +25,10 @@ the host participates, and that claim is checked rather than asserted; see
 | GCC 4.6.4, C | ✅ |
 | musl again, this time compiled by GCC | ✅ |
 | GCC 4.6.4 with C++, and libstdc++ | ✅ |
+| GCC 10.4.0, built by 4.6 | ✅ C++17 |
+| musl a fourth time, compiled by GCC 10 | ✅ |
 | A registered `cc_toolchain` | ✅ `cc_binary`, `cc_library` and `cc_test` work |
+| clang 22.1.8 and lld, built by GCC 10 | ✅ a second `cc_toolchain` |
 
 The chain ends in a C++ compiler, and ordinary Bazel rules use it:
 
@@ -35,7 +38,9 @@ $ bazel test //...
 //toolchain/tests:hello_test                                    PASSED
 //tools/pkg/gcc:gcc_version_test                                PASSED
 //tools/pkg/gcc/cxx:gcc_cxx_version_test                        PASSED
-... 38 tests, all passing
+//tools/pkg/gcc/latest:gcc_latest_version_test                  PASSED
+//toolchain/tests:cxx17_test                                    PASSED
+... 43 tests, all passing
 
 $ bazel run //toolchain/tests:hello
 hello world
@@ -53,7 +58,7 @@ it descends from the 357-byte hex0 seed.
 
 ### What the compiler is
 
-GCC 4.6.4 and musl 1.2.6, built in this order:
+GCC 10.4.0 and musl 1.2.6, built in this order:
 
 1. tinycc, seven stages deep, is the first compiler that can build a libc.
 2. musl, compiled by tinycc twice — the first round because the mes-libc
@@ -70,6 +75,13 @@ GCC 4.6.4 and musl 1.2.6, built in this order:
 5. GCC 4.6.4 again with `--enable-languages=c,c++`, built by the C compiler
    from step 3 against the musl from step 4. tinycc cannot compile C++ at
    all, so a second GCC pass is how the chain acquires one.
+6. GCC 10.4.0, built by that C++ compiler. GCC has needed a C++ compiler to
+   build itself since 4.8, and 10.4 asks only for C++98 — GCC 11 raises that
+   to C++11, which 4.6 does not have, so 10.4 is as far as this ladder
+   reaches in one step. 10.5 is not usable: it miscompiles under 4.6
+   ([PR 110716](https://gcc.gnu.org/bugzilla/show_bug.cgi?id=110716)).
+7. musl a fourth time, compiled by GCC 10, so the C library a program links
+   against was built by the compiler that compiles it.
 
 Version numbers, patches and configure flags are nixpkgs'
 [minimal-bootstrap](https://github.com/NixOS/nixpkgs/tree/master/pkgs/os-specific/linux/minimal-bootstrap),
@@ -79,11 +91,52 @@ this repository to load.
 
 ### What C++ this is
 
-GCC 4.6 is from 2011. It implements C++98 fully and the parts of C++0x that
-existed at the time, which `-std=c++0x` selects; it is not a C++11 compiler
-and it is nobody's idea of a modern one. It is the compiler this chain can
-reach, and the next step is to use it to build a modern GCC — see
-[Roadmap](#roadmap).
+C++17. `toolchain/tests/cxx17.cc` is built through the registered toolchain
+and uses structured bindings, `if constexpr`, a fold expression,
+`std::optional` and `std::string_view` — none of which GCC 4.6 can compile,
+so the test fails to build rather than fails to run if the toolchain is ever
+pointed back at it.
+
+GCC 10 defaults to `gnu++14`, so ask for `-std=c++17` in `copts` when you
+want it.
+
+### clang
+
+The chain does not stop at GCC. `//toolchain:clang` is a second
+`cc_toolchain` driven by clang 22.1.8 and lld 22.1.8, both built by the
+GCC 10 above. The `.comment` section of anything it produces is the whole
+ladder in three lines:
+
+```console
+$ readelf -p .comment bazel-bin/toolchain/tests/cxx17
+  GCC: (GNU) 10.4.0
+  clang version 22.1.8
+  Linker: LLD 22.1.8
+```
+
+LLVM is consumed through `utils/bazel`, which upstream does not publish to
+the registry, so `MODULE.bazel` fetches the source and lets `llvm_configure`
+overlay the BUILD files onto it. Four patches travel with it, each for one
+reason: no Python interpreter, no glibc, a version string that reads
+`22.1.8None` in a release tarball, and a zlib-ng that cannot be included with
+angle brackets. compiler-rt is not built -- `libgcc.a` already has the
+builtins -- and neither is libc++, so the C++ runtime is still libstdc++.
+
+It is not registered by default and cannot be: GCC is what builds clang, so a
+clang toolchain that also applied to the tools being built for the host would
+depend on itself. Ask for it explicitly:
+
+```console
+$ bazel build --config=llvm \
+    --extra_toolchains=//toolchain:clang \
+    --platforms=//toolchain:clang_platform \
+    //toolchain/tests:cxx17
+```
+
+`--config=llvm` carries the flags LLVM's own `.bazelrc` would have supplied,
+and `--config=remote` adds BuildBuddy: LLVM is an ordinary Bazel build of an
+ordinary C++ project and takes well to remote execution, where the bootstrap
+does not and is pinned local. See `tools/stage0/exec.bzl`.
 
 ## Building
 
@@ -168,18 +221,19 @@ cc_binary(
 ```
 
 Two things to know about the result. Programs are statically linked, because
-the musl this ships has no shared objects. And the compiler is GCC 4.6, so
-`-std=c++0x` is as new as the language gets; add it with `copts` if you want
-it.
+the musl this ships has no shared objects. And the compiler is GCC 10.4, which
+defaults to `gnu++14`; add `-std=c++17` with `copts` if you want it.
 
-Building your first target builds the whole bootstrap, which takes on the
-order of twenty minutes on a warm machine and is cached afterwards.
+Building your first target builds the whole bootstrap -- the seed through to
+GCC 10 -- which takes on the order of fifteen minutes on a sixteen-core
+machine and is cached afterwards. The long builds run `make -j`; see
+MAKE_JOBS in `tools/stage0/kaem.bzl` if that number needs changing.
 
 `examples/consumer` is exactly the above as a runnable module — its own
 `MODULE.bazel`, a `cc_library`, a `cc_binary` and a `cc_test` — and it is
 worth running rather than only reading. It is the only thing that exercises
 the paths and labels this repository hands to a *consumer*, which is where a
-build that has only ever run as the main repository goes wrong; four such
+build that has only ever run as the main repository goes wrong; six such
 faults were found by running it.
 
 The lower-level tools are available under stable labels for anything that
@@ -225,23 +279,25 @@ archiving uses no host tool.
 
 ## Roadmap
 
-The chain reaches a working C++ compiler, but a 2011 one. What is left is
-mostly about making it a compiler people would want to use.
+The chain reaches a C++17 compiler. What is left is mostly about making it a
+compiler more people would reach for.
 
-1. **GCC 10.4**, built by the 4.6 that exists now. nixpkgs'
-   minimal-bootstrap carries the recipe (`gcc/10.nix`) and it is the step
-   that turns C++0x into C++17. It needs a C++98 compiler to build, which is
-   exactly what step 5 above produced.
-2. **The toolchain's rough edges.** `libstdc++.a` does not carry the
-   libsupc++ objects, so the link line has to say `-lsupc++` explicitly; the
-   toolchain declares no dynamic linking, no `--start-lib`, and no separate
-   debug info. None of these is hard, and each is a small, testable change.
+1. **The toolchain's rough edges.** Neither toolchain declares dynamic
+   linking, `--start-lib`, module maps or separate debug info. None of these
+   is hard, and each is a small, testable change.
+2. **The genrule shell.** It is the one host program either audit still
+   names, and only because Bazel takes a genrule's shell as an absolute
+   system path -- `sh_toolchain`'s `path` is a string, and the shell is not a
+   declared input, so it cannot be a build artifact. Replacing the eight
+   genrules on the path to clang with rules that name the bootstrapped bash
+   would close it.
 3. **A `.bazelrc`-free consumer.** A depending module currently wants
    `--incompatible_enable_cc_toolchain_resolution`, which is the default in
-   recent Bazel but is set explicitly here.
-4. **More of the utility set**: findutils, gnutar, bison, flex. Nothing in
-   the chain needs them today -- GCC's tar and flex rules are worked around
-   rather than satisfied -- but a package added later probably will.
+   recent Bazel but is set explicitly here, and `--test_env=PATH` so that
+   Bazel's own test runner can find a shell.
+4. **More of the utility set**: gnutar, bison, flex. Nothing in the chain
+   needs them today -- GCC's tar and flex rules are worked around rather than
+   satisfied -- but a package added later probably will.
 
 ## References
 
