@@ -1,19 +1,31 @@
 """GNU awk 5.3.2, built by GNU awk 3.0.6. BUILDS, BUT MISCOMPILED.
 
-It builds and passes the tests below, and it is still wrong. Running
-autoconf's subs.awk over GCC's Makefile.in, every substituted line comes out
-as the bare value with its left-hand side gone:
+It builds and passes the tests below, and it is still wrong: length()
+returns 1 for every string.
+
+    $ echo abc | gawk '{ print length($0), length("hello"), substr("hello",2,3) }'
+    1 1                                     # should be: 3 5 ell
+
+The string data itself is intact -- `print $0` reproduces the whole record,
+and $1 is the right field -- so what is wrong is the length gawk has
+recorded for a string, not the bytes. It is wrong for a constant written in
+the program text, so it is not about reading input either.
+
+Through that, autoconf's subs.awk loses the left-hand side of every
+substitution, because it assembles each line as
+substr(line, 1, length(field[1])) value substr(...):
 
     build_alias = @build_alias@      ->      x86_64-unknown-linux-gnu
 
-which make then rejects with "missing separator". subs.awk builds each line
-as substr(line, 1, len) value substr(line, len + keylen + 3) where
-len = length(field[1]), so a length() or substr() returning the wrong thing
-produces exactly this. That is the same family of fault as the memset and
-regex bugs already found: the program is fine, the compiler is not.
+and make rejects the result with "missing separator".
 
-So GCC cannot use this yet either. gawk 3.0.6 gets options.h wrong and this
-one gets config.status wrong.
+Disabling gawk's multibyte path (mbrtowc, wctype.h) does not change it, so
+this is not the character-versus-byte counting that broke sed's regex. It is
+the same family as the memset fault -- the program is correct and the
+compiler is not -- but the specific miscompilation has not been found.
+
+So GCC is blocked from both directions: gawk 3.0.6 gets options.h wrong and
+gawk 5.3.2 gets config.status wrong.
 
 
 GCC generates its options.h with an awk script, and gawk 3.0.6 gets the
