@@ -1,0 +1,14 @@
+"""The C/C++ toolchain's configuration rule.
+
+Only the rule lives here. The `cc_toolchain` and `toolchain` targets that use
+it are in the root package, and have to be: a cc_toolchain's tool paths are
+resolved against the package holding it, every tool in this one is a build
+artifact under bazel-out/, and Bazel rejects the ../ that reaching bazel-out
+from any other package would need. See //:cc_toolchain.
+"""
+
+package(
+    default_visibility = ["//visibility:public"],
+)
+
+exports_files(["cc_toolchain_config.bzl"])

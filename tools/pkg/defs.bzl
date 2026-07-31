@@ -224,7 +224,17 @@ def tcc_package(
         **kwargs
     )
 
-def _installed_program_impl(ctx):
+def _extract(ctx, path):
+    """Copies one file out of a package's output directory.
+
+    Args:
+        ctx: The rule context, which must have a `package` attribute and the
+            private `_catm` tool.
+        path: The path of the wanted file inside the directory.
+
+    Returns:
+        The extracted File.
+    """
     directory = ctx.attr.package[DefaultInfo].files.to_list()
     if len(directory) != 1:
         fail("%s must provide exactly one directory" % ctx.attr.package.label)
@@ -232,7 +242,7 @@ def _installed_program_impl(ctx):
     out = ctx.actions.declare_file(ctx.label.name)
     args = ctx.actions.args()
     args.add(out)
-    args.add(directory[0].path + "/bin/" + ctx.attr.program)
+    args.add(directory[0].path + "/" + path)
 
     # catm copies by concatenating a single file, which avoids needing `cp`
     # to be reachable from a rule that is not running a script.
@@ -243,7 +253,14 @@ def _installed_program_impl(ctx):
         arguments = [args],
         mnemonic = "ExtractProgram",
     )
+    return out
 
+def _installed_program_impl(ctx):
+    out = _extract(ctx, "bin/" + ctx.attr.program)
+    return [DefaultInfo(files = depset([out]), executable = out)]
+
+def _installed_file_impl(ctx):
+    out = _extract(ctx, ctx.attr.path)
     return [DefaultInfo(files = depset([out]), executable = out)]
 
 installed_program = rule(
@@ -262,4 +279,23 @@ installed_program = rule(
 
 A TreeArtifact cannot be run or depended on as an executable, so anything that
 wants to invoke a built program needs the file on its own.""",
+)
+
+installed_file = rule(
+    implementation = _installed_file_impl,
+    executable = True,
+    attrs = {
+        "package": attr.label(mandatory = True, doc = "A package output directory."),
+        "path": attr.string(mandatory = True, doc = "Path of the file inside it."),
+        "_catm": attr.label(
+            executable = True,
+            cfg = "exec",
+            default = "//tools/stage0/phase2:catm",
+        ),
+    },
+    doc = """Extracts one file from a package's output directory, by path.
+
+The same problem installed_program solves, for a file that is not under bin/.
+A cc_toolchain names its compiler by path, and a path inside a TreeArtifact
+is not a label that anything can be pointed at.""",
 )

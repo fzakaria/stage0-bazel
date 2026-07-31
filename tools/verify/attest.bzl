@@ -105,8 +105,10 @@ def _attestation_impl(ctx):
             "     %s from a hash-pinned archive" % counts["pinned"],
             "     %s checked in to this repository" % counts["checked-in"],
             "",
-            "   Nothing was read from the host filesystem. The pinned archives",
-            "   are declared with their sha256 in MODULE.bazel:",
+            "   Nothing was read from the host filesystem. Each repository",
+            "   below is pinned by a sha256 in MODULE.bazel, or, for the",
+            "   Bazel modules this repository does not declare itself, by",
+            "   MODULE.bazel.lock:",
             "",
         ] + [
             "     " + name

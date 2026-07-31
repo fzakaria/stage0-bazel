@@ -14,6 +14,15 @@ package(
 no_native_toolchain_audit(
     name = "no_native_toolchain",
     targets = [
+        # A C++ program compiled and linked through the registered
+        # cc_toolchain. This reaches everything the toolchain is made of --
+        # GCC, musl, binutils -- and through them the whole chain below.
+        "//toolchain/tests:hello",
+        "//toolchain/tests:greeting",
+        "//tools/pkg/gcc/cxx:gcc_cxx_dist",
+        "//tools/pkg/gcc:gcc",
+        "//tools/pkg/musl:musl3",
+        "//tools/pkg/binutils:binutils",
         "//tools/pkg/gnumake",
         "//tools/pkg/gnupatch",
         "//tools/tcc/tests:features",
@@ -41,6 +50,11 @@ no_native_toolchain_audit(
 hermeticity_attestation(
     name = "attestation",
     targets = [
+        # The C++ program is the root that matters: everything the toolchain
+        # is built from is reachable from it.
+        "//toolchain/tests:hello",
+        "//toolchain/tests:greeting",
+        "//tools/pkg/gcc/cxx:gcc_cxx_dist",
         "//tools/pkg/gnumake",
         "//tools/pkg/gnupatch",
         "//tools/tcc/current:tcc",

@@ -1,0 +1,38 @@
+"""Proof that the registered toolchain compiles C++.
+
+These are ordinary cc_* rules. Nothing here mentions the bootstrap: the point
+is that a caller writes the rules they would write anyway, and toolchain
+resolution finds a compiler descended from the hex0 seed.
+"""
+
+load("//tools/verify:run_test.bzl", "program_output_test")
+
+package(
+    default_visibility = ["//visibility:public"],
+)
+
+cc_binary(
+    name = "hello",
+    srcs = ["hello.cc"],
+)
+
+program_output_test(
+    name = "hello_test",
+    program = ":hello",
+    expected_output = "hello world \nlargest 11\ncaught largest of nothing",
+)
+
+# A library, so that the archiver runs. A single-file cc_binary never reaches
+# it, and `ar` writing a usable index is a separate thing from the compiler
+# working.
+cc_library(
+    name = "greeting",
+    srcs = ["greeting.cc"],
+    hdrs = ["greeting.h"],
+)
+
+cc_test(
+    name = "greeting_test",
+    srcs = ["greeting_test.cc"],
+    deps = [":greeting"],
+)
