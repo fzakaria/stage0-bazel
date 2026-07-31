@@ -15,12 +15,17 @@ building the compiler. It stops linking build/gengtype:
 
     tcc: error: undefined symbol 'lexer_line', 'yylex', 'yybegin'
 
-Those live in gengtype-lex.c, which GCC ships pre-generated from
-gengtype-lex.l because flex is not assumed. So either that file is not being
-compiled or its object is not reaching the link -- most likely make thinks it
-needs regenerating, since untar gives every source the same timestamp, and
-the rule that would run flex is prefixed with - so its failure is ignored
-silently.
+Those come from gengtype-lex.c, which GCC ships pre-generated because flex
+is not assumed. Checked in a retained sandbox: the source is present and the
+full 84 KB, build/gengtype-lex.o is built, and it is on the link line along
+with gengtype.o, gengtype-parse.o and gengtype-state.o. So tinycc reads an
+object that ought to define yylex and does not find it -- which points at
+how it compiles flex's output, a file built around large static tables and
+a state machine, rather than at anything in the build.
+
+That is the same shape as the archive-resolution flake in
+tools/pkg/bash/latest: tinycc reading a well-formed input and not finding a
+symbol that is in it. The two are worth investigating together.
 
 Tagged manual until it builds.
 """
