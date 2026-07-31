@@ -1,4 +1,4 @@
-"""GCC 4.6.4, C only. NOT COMPLETE YET.
+"""GCC 4.6.4, C only.
 
 The last GCC release that can be built by a compiler as limited as tinycc,
 which is why both reference bootstraps go through it. This stage builds the C
@@ -8,34 +8,6 @@ reconfigured for C++ afterwards.
 The recipe is nixpkgs' minimal-bootstrap gcc/4.6.nix. gmp, mpfr and mpc are
 unpacked beside the GCC tree and linked into it under the names GCC's
 top-level configure looks for, so it builds them in-tree.
-
-Where it stands: the printf fault that blocked this is fixed (see
-tools/pkg/musl), and GCC now gets past gcc/config/i386/i386.h and deep into
-building the compiler. It stops linking build/gengtype:
-
-    tcc: error: undefined symbol 'lexer_line', 'yylex', 'yybegin'
-
-Those come from gengtype-lex.c, which GCC ships pre-generated because flex
-is not assumed. This has been checked as far as it can be from outside
-tinycc, using the binutils this repository built:
-
-    $ nm build/gengtype-lex.o
-    0000000000003f20 T yybegin
-    000000000000006e T yylex
-    0000000000003de9 T yylex_destroy
-
-The symbols are defined and global, the object is 54 KB and complete, and it
-is on the link line beside gengtype.o, gengtype-parse.o and
-gengtype-state.o. tinycc reads that object and reports the symbols
-undefined anyway.
-
-It is the same shape as the archive-resolution flake in
-tools/pkg/bash/latest -- tinycc reading a well-formed input and not seeing a
-symbol that is demonstrably in it -- and the two are likely one fault in
-tccelf.c's symbol handling. They should be investigated together, and
-binutils' nm and readelf are now available to do it with.
-
-Tagged manual until it builds.
 """
 
 load("//tools/pkg:configure.bzl", "DECOMPRESS_GNU", "LIBC_HEADERS_TOOLCHAIN", "configure_package")
@@ -52,6 +24,9 @@ PATCHES = [
     # directory. There is no /usr/include in this world, and picking one up
     # would end the bootstrap.
     "patches/no-system-headers.patch",
+    # `make install` copies GCC's own headers with tar, and there is no tar
+    # here that can write an archive.
+    "patches/install-headers-cp.patch",
 ]
 
 configure_package(
@@ -137,13 +112,14 @@ configure_package(
         "--disable-build-with-cxx",
     ],
     make_flags = ["MAKEINFO=true"],
-    tags = ["manual"],
     install_target = "install",
     tools = [
         "//tools/pkg/bash/latest:bin",
         "//tools/pkg/gnused/latest:bin",
         "//tools/pkg/gawk/latest:bin",
         "//tools/pkg/binutils:bin",
+        # cmp, for the documentation rules; see tools/pkg/diffutils.
+        "//tools/pkg/diffutils:bin",
     ],
 )
 
@@ -151,7 +127,6 @@ installed_program(
     name = "gcc",
     package = ":gcc_dist",
     program = "gcc",
-    tags = ["manual"],
 )
 
 tool_dir(
@@ -160,7 +135,6 @@ tool_dir(
         "gcc": ":gcc",
         "cc": ":gcc",
     },
-    tags = ["manual"],
 )
 
 program_output_test(
@@ -168,5 +142,4 @@ program_output_test(
     program = ":gcc",
     arguments = ["-dumpversion"],
     expected_output = "4.6.4",
-    tags = ["manual"],
 )

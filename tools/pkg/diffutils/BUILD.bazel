@@ -1,0 +1,86 @@
+"""GNU diffutils 3.8, for cmp and diff.
+
+GCC needs `cmp`. Its documentation rules regenerate doc/tm.texi from the
+target hook descriptions and then compare the result against the file the
+tarball ships, replacing it only if they differ; without cmp the rule fails
+and `make install` stops at s-tm-texi.
+
+3.8 is the last release nixpkgs' minimal-bootstrap builds with tinycc, and
+the recipe is theirs.
+"""
+
+load("//tools/pkg:configure.bzl", "LIBC_HEADERS_TOOLCHAIN", "configure_package")
+load("//tools/pkg:defs.bzl", "installed_program")
+load("//tools/stage0:files.bzl", "tool_dir")
+load("//tools/verify:run_test.bzl", "program_output_test")
+
+package(
+    default_visibility = ["//visibility:public"],
+)
+
+# The programs later packages reach for. diffutils also builds diff3 and sdiff,
+# which nothing here uses.
+PROGRAMS = [
+    "cmp",
+    "diff",
+]
+
+configure_package(
+    name = "diffutils_dist",
+    tarball = "@diffutils-src//file",
+    prefix = "diffutils-3.8",
+    libc_headers = LIBC_HEADERS_TOOLCHAIN,
+    compression = "xz",
+    configure_flags = [
+        "--build=x86_64-unknown-linux-gnu",
+        "--host=x86_64-unknown-linux-gnu",
+        "--disable-nls",
+        "--disable-dependency-tracking",
+    ],
+    exports = [
+        "AR=\"tcc -ar\"",
+        "RANLIB=true",
+        "LD=tcc",
+    ],
+    make_flags = [
+        "AR=\"tcc -ar\"",
+        # diffutils.info is shipped, but untar stamps every file with the
+        # moment it was written, so the .texi it is generated from can end up
+        # looking newer and make reaches for makeinfo. There is no texinfo in
+        # this bootstrap and the manual is not wanted; true is what GCC's
+        # build is given for the same reason.
+        "MAKEINFO=true",
+    ],
+    tools = [
+        "//tools/pkg/bash/latest:bin",
+        "//tools/pkg/gnused/latest:bin",
+        "//tools/pkg/gawk/latest:bin",
+    ],
+)
+
+[
+    installed_program(
+        name = program,
+        package = ":diffutils_dist",
+        program = program,
+    )
+    for program in PROGRAMS
+]
+
+tool_dir(
+    name = "bin",
+    tools = {program: ":" + program for program in PROGRAMS},
+)
+
+program_output_test(
+    name = "diffutils_cmp_version_test",
+    program = ":cmp",
+    arguments = ["--version"],
+    expected_output = """cmp (GNU diffutils) 3.8
+Copyright (C) 2021 Free Software Foundation, Inc.
+License GPLv3+: GNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>.
+This is free software: you are free to change and redistribute it.
+There is NO WARRANTY, to the extent permitted by law.
+
+Written by Torbjörn Granlund and David MacKenzie.""",
+)

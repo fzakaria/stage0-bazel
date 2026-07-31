@@ -207,6 +207,17 @@ http_file(
     downloaded_file_path = "gawk-5.3.2.tar.gz",
 )
 
+# GNU diffutils 3.8, for cmp. GCC's documentation rules compare a generated
+# texinfo file against the shipped one before deciding to replace it, and
+# `make install` stops when the comparison cannot be made. 3.8 is the last
+# release nixpkgs' minimal-bootstrap builds with tinycc.
+http_file(
+    name = "diffutils-src",
+    sha256 = "a6bdd7d1b31266d11c4f4de6c1b748d4607ab0231af5188fc2533d0ae2438fec",
+    url = "https://mirror.team-cymru.com/gnu/diffutils/diffutils-3.8.tar.xz",
+    downloaded_file_path = "diffutils-3.8.tar.xz",
+)
+
 # GCC 4.6.4, split as upstream ships it: the C compiler, the C++ front end,
 # and the three arbitrary-precision libraries it needs. 4.6 is the last
 # release that builds with a compiler as limited as tinycc, which is why both

@@ -1,0 +1,25 @@
+Install GCC's own headers with cp rather than with tar.
+
+install-headers-tar pipes one tar into another, and there is no tar in this
+bootstrap that can create an archive -- mescc-tools-extra ships untar and
+nothing else, so `make install` stopped with "tar: command not found".
+
+install-headers-cp is upstream's own alternative, selected here by the same
+mechanism the VMS and Cygwin build platforms use. It copies gcc's include and
+include-fixed directories directly and needs nothing beyond coreutils.
+
+This cannot be done from the make command line: the top-level Makefile sets
+MAKEOVERRIDES= before descending into gcc, so a command-line
+INSTALL_HEADERS_DIR does not reach the sub-make that reads it.
+
+--- a/gcc/config.build
++++ b/gcc/config.build
+@@ -46,7 +46,7 @@
+ build_xm_file=
+ build_xm_defines=
+ build_exeext=
+-build_install_headers_dir=install-headers-tar
++build_install_headers_dir=install-headers-cp
+ build_file_translate=
+
+ # System-specific settings.
