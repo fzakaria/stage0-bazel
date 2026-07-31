@@ -1,0 +1,84 @@
+"""GNU findutils 4.10.0, for find.
+
+GCC 10's build reaches for `find`, and nothing in the chain has provided one
+until now. The recipe is nixpkgs' minimal-bootstrap findutils/default.nix.
+"""
+
+load("//tools/pkg:configure.bzl", "LIBC_HEADERS_TOOLCHAIN", "configure_package")
+load("//tools/pkg:defs.bzl", "installed_program")
+load("//tools/stage0:files.bzl", "tool_dir")
+load("//tools/verify:run_test.bzl", "program_output_test")
+
+package(
+    default_visibility = ["//visibility:public"],
+)
+
+# find is the one anything else asks for; xargs and locate come along with it.
+PROGRAMS = [
+    "find",
+    "xargs",
+]
+
+configure_package(
+    name = "findutils_dist",
+    tarball = "@findutils-src//file",
+    prefix = "findutils-4.10.0",
+    libc_headers = LIBC_HEADERS_TOOLCHAIN,
+    compression = "xz",
+    extra_setup = [
+        # gnulib's configure decides PATH_MAX is unavailable and picks the
+        # chdir_long path, which then does not compile. nixpkgs makes the same
+        # substitution.
+        "sed -i -e s/chdir_long/chdir/ gl/lib/save-cwd.c",
+    ],
+    configure_flags = [
+        "--build=x86_64-unknown-linux-gnu",
+        "--host=x86_64-unknown-linux-gnu",
+        "--disable-nls",
+        "--disable-dependency-tracking",
+    ],
+    exports = [
+        "AR=\"tcc -ar\"",
+        "RANLIB=true",
+        "LD=tcc",
+    ],
+    make_flags = [
+        "AR=\"tcc -ar\"",
+        # The manual is shipped, and there is no texinfo here to rebuild it
+        # with; see tools/pkg/diffutils.
+        "MAKEINFO=true",
+    ],
+    tools = [
+        "//tools/pkg/bash/latest:bin",
+        "//tools/pkg/gnused/latest:bin",
+        "//tools/pkg/gawk/latest:bin",
+    ],
+)
+
+[
+    installed_program(
+        name = program,
+        package = ":findutils_dist",
+        program = program,
+    )
+    for program in PROGRAMS
+]
+
+tool_dir(
+    name = "bin",
+    tools = {program: ":" + program for program in PROGRAMS},
+)
+
+program_output_test(
+    name = "findutils_version_test",
+    program = ":find",
+    arguments = ["--version"],
+    expected_output = """find (GNU findutils) 4.10.0
+Copyright (C) 2024 Free Software Foundation, Inc.
+License GPLv3+: GNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>.
+This is free software: you are free to change and redistribute it.
+There is NO WARRANTY, to the extent permitted by law.
+
+Written by Eric B. Decker, James Youngman, and Kevin Dalley.
+Features enabled: D_TYPE O_NOFOLLOW(enabled) LEAF_OPTIMISATION FTS(FTS_CWDFD) CBO(level=1) """,
+)

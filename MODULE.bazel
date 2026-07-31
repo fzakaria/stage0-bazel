@@ -213,6 +213,15 @@ http_file(
     downloaded_file_path = "gawk-5.3.2.tar.gz",
 )
 
+# GNU findutils 4.10.0, for find. GCC 10's build uses it, and this is the
+# version nixpkgs' minimal-bootstrap builds with tinycc.
+http_file(
+    name = "findutils-src",
+    sha256 = "1387e0b67ff247d2abde998f90dfbf70c1491391a59ddfecb8ae698789f0a4f5",
+    url = "https://mirror.team-cymru.com/gnu/findutils/findutils-4.10.0.tar.xz",
+    downloaded_file_path = "findutils-4.10.0.tar.xz",
+)
+
 # GNU diffutils 3.8, for cmp. GCC's documentation rules compare a generated
 # texinfo file against the shipped one before deciding to replace it, and
 # `make install` stops when the comparison cannot be made. 3.8 is the last
