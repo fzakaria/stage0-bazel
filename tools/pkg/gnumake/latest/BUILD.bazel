@@ -1,0 +1,116 @@
+"""GNU make 4.4.1 again, this time by running its own ./configure.
+
+The same tarball as //tools/pkg/gnumake. That one is built from a source list
+transcribed by hand, because it is what the bootstrap needs before any shell
+exists to run a configure script -- it is the make that makes configure
+possible. A hand-transcribed build has no configure, so nothing probes the C
+library, and the config.h it is given says only what the transcription
+asserts.
+
+That costs the jobserver, which is what `make -j` is built on.
+
+make has two implementations of it. The one it prefers uses a named pipe and
+is compiled in only when configure finds mkfifo; the fallback uses an
+anonymous pipe, and to interrupt a blocking read on it, posixos.c installs a
+SIGALRM handler and calls alarm(1) before every read:
+
+    if (sigaction (SIGALRM, &sa, NULL) < 0)
+      pfatal_with_name ("sigaction: SIGALRM");
+    alarm (1);
+
+Without configure, HAVE_MKFIFO is unset and the fallback is the only one
+there is -- `make --jobserver-style=fifo` answers "unknown jobserver auth
+style 'fifo'". The fallback then loses tokens on every run:
+
+    $ make -j4
+    make: INTERNAL: Exiting with 2 jobserver tokens available; should be 4!
+
+and under a recursive build the alarm fires with its default disposition
+rather than the handler, which kills the sub-make outright:
+
+    make[1]: *** [Makefile:9065: all-libdecnumber] Error 142
+
+142 is 128 + SIGALRM. Building against musl instead of mes-libc gives
+configure a working mkfifo to find, so the named-pipe jobserver is compiled
+in and SIGALRM is never involved; posixos.c says so itself, at the top of the
+fifo implementation: "It also provides a timeout facility so we don't need to
+use SIGALRM."
+
+This is the make the long builds use. See MAKE_JOBS in //tools/stage0:kaem.bzl.
+"""
+
+load("//tools/pkg:configure.bzl", "DECOMPRESS_GNU", "LIBC_HEADERS_TOOLCHAIN", "configure_package")
+load("//tools/pkg:defs.bzl", "installed_program")
+load("//tools/stage0:files.bzl", "tool_dir")
+load("//tools/verify:run_test.bzl", "program_output_test")
+
+package(
+    default_visibility = ["//visibility:public"],
+)
+
+configure_package(
+    name = "gnumake_dist",
+    tarball = "@gnumake-src//file",
+    prefix = "make-4.4.1",
+    libc_headers = LIBC_HEADERS_TOOLCHAIN,
+    decompressor = DECOMPRESS_GNU,
+    configure_flags = [
+        "--build=x86_64-unknown-linux-gnu",
+        "--host=x86_64-unknown-linux-gnu",
+        "--disable-dependency-tracking",
+        "--disable-nls",
+        # Guile is an optional extension language and nothing here uses it.
+        # Left to itself configure would look for it on the host.
+        "--without-guile",
+    ],
+    exports = [
+        "AR=\"tcc -ar\"",
+        "RANLIB=true",
+        "LD=tcc",
+    ],
+    # The manual is shipped and there is no texinfo to rebuild it with; see
+    # tools/pkg/diffutils.
+    make_flags = ["MAKEINFO=true"],
+    tools = [
+        "//tools/pkg/bash/latest:bin",
+        "//tools/pkg/gnused/latest:bin",
+        "//tools/pkg/gawk/latest:bin",
+    ],
+)
+
+installed_program(
+    name = "make",
+    package = ":gnumake_dist",
+    program = "make",
+)
+
+tool_dir(
+    name = "bin",
+    tools = {"make": ":make"},
+)
+
+VERSION_BANNER = """GNU Make 4.4.1
+Built for x86_64-unknown-linux-gnu
+Copyright (C) 1988-2023 Free Software Foundation, Inc.
+License GPLv3+: GNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>
+This is free software: you are free to change and redistribute it.
+There is NO WARRANTY, to the extent permitted by law."""
+
+program_output_test(
+    name = "gnumake_latest_version_test",
+    program = ":make",
+    arguments = ["--version"],
+    expected_output = VERSION_BANNER,
+)
+
+# The whole reason this package exists, asserted by the one thing that tells
+# the two builds apart from the outside. make parses --jobserver-style before
+# it prints anything, and rejects a style it was not compiled with, so the
+# hand-transcribed make answers this with "unknown jobserver auth style
+# 'fifo'" and a non-zero exit while this one prints its banner.
+program_output_test(
+    name = "gnumake_jobserver_style_test",
+    program = ":make",
+    arguments = ["--jobserver-style=fifo", "--version"],
+    expected_output = VERSION_BANNER,
+)
