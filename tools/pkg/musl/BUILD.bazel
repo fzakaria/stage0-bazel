@@ -49,10 +49,6 @@ configure_package(
         # floorl(5.7) returns 4 -- so it is replaced with one that does no
         # bit manipulation. See floorl.c.
         "cp $root/tools/pkg/musl/floorl.c src/math/floorl.c",
-        # tinycc's assembler does not know the @PLT suffix. This is a static
-        # build with no procedure linkage table, so the plain symbol is what
-        # the call should have been anyway. sigsetjmp is the only x86-64
-        # source that uses it, and it has no C equivalent to fall back to.
         "sed -i -e s/setjmp@PLT/setjmp/ src/signal/x86_64/sigsetjmp.s",
         # memset, memcpy and memmove are hand-written x86-64 assembly here,
         # and tinycc's assembler gets memset wrong: past the first few bytes

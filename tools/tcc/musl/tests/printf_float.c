@@ -21,15 +21,28 @@
    gcc/config/i386/i386.h with "invalid constant in preprocessor
    expression". Neither gawk is at fault.
 
-   musl's printf converts through long double and leans on frexpl, floorl
-   and fmodl. tools/pkg/musl removes src/math/x86_64 because tinycc cannot
-   assemble the x87 routines there or compile their SSE-constrained C
-   companions, which leaves the portable ld80 implementations in src/math.
-   Those, or tinycc's own x87 long double arithmetic, are where to look.
+   The fault is inside musl's fmt_fp, in src/stdio/vfprintf.c. Everything
+   it depends on has been checked in isolation and is correct:
 
-   The scale factor is suspiciously close to a power of two -- 5 divided by
-   5.21541e-07 is about 9.587e6, near 2**23.2 -- which points at an exponent
-   being handled wrongly rather than at arithmetic noise. */
+     frexpl, fmodl                       correct
+     long double arithmetic              correct
+     long double to int, signed/unsigned correct
+     LDBL_MANT_DIG 64, LDBL_MAX_EXP 16384, sizeof 16   correct
+     the power-of-two scaling loop fmt_fp uses     correct
+
+   Two candidates have been tried and ruled out. floorl was genuinely
+   miscompiled -- floorl(5.7) returned 4 -- and tools/pkg/musl now replaces
+   it; that is fixed and did not change this. fmt_fp also sizes its digit
+   buffer with a variable-length array, `uint32_t big[bufsize]`, and pinning
+   that to a compile-time bound did not change it either.
+
+   So what remains is fmt_fp's own body: roughly 150 lines of pointer
+   arithmetic over that buffer. Bisecting it -- compiling a standalone copy
+   with the same compiler and printing intermediates -- is the way in.
+
+   The scale factor is suspiciously close to a power of two: 5 divided by
+   5.21541e-07 is about 9.587e6, near 2**23.2, which points at an exponent
+   handled wrongly rather than at arithmetic noise. */
 
 #include <stdio.h>
 
