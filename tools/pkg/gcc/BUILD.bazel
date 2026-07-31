@@ -16,16 +16,24 @@ building the compiler. It stops linking build/gengtype:
     tcc: error: undefined symbol 'lexer_line', 'yylex', 'yybegin'
 
 Those come from gengtype-lex.c, which GCC ships pre-generated because flex
-is not assumed. Checked in a retained sandbox: the source is present and the
-full 84 KB, build/gengtype-lex.o is built, and it is on the link line along
-with gengtype.o, gengtype-parse.o and gengtype-state.o. So tinycc reads an
-object that ought to define yylex and does not find it -- which points at
-how it compiles flex's output, a file built around large static tables and
-a state machine, rather than at anything in the build.
+is not assumed. This has been checked as far as it can be from outside
+tinycc, using the binutils this repository built:
 
-That is the same shape as the archive-resolution flake in
-tools/pkg/bash/latest: tinycc reading a well-formed input and not finding a
-symbol that is in it. The two are worth investigating together.
+    $ nm build/gengtype-lex.o
+    0000000000003f20 T yybegin
+    000000000000006e T yylex
+    0000000000003de9 T yylex_destroy
+
+The symbols are defined and global, the object is 54 KB and complete, and it
+is on the link line beside gengtype.o, gengtype-parse.o and
+gengtype-state.o. tinycc reads that object and reports the symbols
+undefined anyway.
+
+It is the same shape as the archive-resolution flake in
+tools/pkg/bash/latest -- tinycc reading a well-formed input and not seeing a
+symbol that is demonstrably in it -- and the two are likely one fault in
+tccelf.c's symbol handling. They should be investigated together, and
+binutils' nm and readelf are now available to do it with.
 
 Tagged manual until it builds.
 """
