@@ -1,0 +1,91 @@
+"""The Linux kernel's userspace API headers.
+
+musl is a complete C library and still not a complete set of headers. The
+kernel owns its own interface -- linux/futex.h, linux/if.h, asm/unistd.h and
+several hundred more -- and ships them separately, under usr/include once
+`make headers` has run. On an ordinary distribution they arrive as a
+linux-headers package, which is why nothing in this bootstrap missed them
+until something real was built against it:
+
+    absl/synchronization/internal/futex.h:25:10: fatal error:
+    linux/futex.h: No such file or directory
+
+Abseil is the first thing here that reaches past the C library to the kernel,
+and it will not be the last -- epoll, netlink, io_uring and the rest of Linux
+live behind these headers too.
+
+There is no compiler in this package. `make headers` copies and preprocesses
+the kernel's own headers, and the only thing built is scripts/unifdef, which
+strips the parts of them that belong to the kernel rather than to userspace.
+The recipe is nixpkgs' minimal-bootstrap linux-headers/default.nix.
+"""
+
+load(
+    "//tools/pkg:configure.bzl",
+    "CONFIGURE_NONE",
+    "LIBC_HEADERS_NONE",
+    "UNTAR_GNU",
+    "configure_package",
+)
+
+package(
+    default_visibility = ["//visibility:public"],
+)
+
+VERSION = "6.5.6"
+
+configure_package(
+    name = "linux_headers",
+    tarball = "@linux-src//file",
+    prefix = "linux-%s" % VERSION,
+    compression = "xz",
+    # mescc-tools-extra's untar segfaults on this one; see UNTAR_GNU.
+    untar = UNTAR_GNU,
+    # The kernel has no configure script; `make headers` is the whole build.
+    configure = CONFIGURE_NONE,
+    libc_headers = LIBC_HEADERS_NONE,
+    cc = "$root/$gcc/bin/gcc",
+    cc_flags = [
+        "-static",
+        "-B$root/$musl/lib",
+    ],
+    extra_directories = {
+        "gcc": "//tools/pkg/gcc/latest:gcc_latest_dist",
+        "musl": "//tools/pkg/musl:musl4",
+    },
+    exports = [
+        "C_INCLUDE_PATH=\"$root/$musl/include\"",
+        "LIBRARY_PATH=\"$root/$musl/lib\"",
+    ],
+    make_flags = [
+        # x86 covers x86_64: the kernel's header tree is per-architecture
+        # family, and arch/x86 is where both live.
+        "ARCH=x86",
+        # On the command line rather than exported, because the kernel's
+        # Makefile assigns HOSTCC with a plain `=` and so wins over the
+        # environment: exporting it leaves the build looking for a bare `gcc`
+        # and stopping with "gcc: command not found". unifdef is the only
+        # thing compiled here, and it runs on this machine rather than on the
+        # target, which is what HOSTCC means.
+        "HOSTCC=\"$root/$gcc/bin/gcc -static -B$root/$musl/lib\"",
+        "CC=\"$root/$gcc/bin/gcc -static -B$root/$musl/lib\"",
+    ],
+    build_targets = ["headers"],
+    # `make headers` leaves the tree in usr/include rather than installing it,
+    # and the kernel has no install target that would put it anywhere else.
+    # The dotfiles beside it are the build's own bookkeeping -- one .*.cmd per
+    # header -- and are not part of the interface.
+    install_commands = [
+        "find usr/include -name '.*' -delete",
+        "mkdir -p \"$out\"",
+        "cp -r usr/include \"$out/include\"",
+    ],
+    tools = [
+        "//tools/pkg/binutils:bin",
+        "//tools/pkg/bash/latest:bin",
+        "//tools/pkg/gnused/latest:bin",
+        "//tools/pkg/gawk/latest:bin",
+        "//tools/pkg/diffutils:bin",
+        "//tools/pkg/findutils:bin",
+    ],
+)

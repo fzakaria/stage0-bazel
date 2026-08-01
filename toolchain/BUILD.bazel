@@ -37,6 +37,8 @@ GCC_VERSION = "10.4.0"
 
 MUSL_TREE = "//tools/pkg/musl:musl4"
 
+LINUX_HEADERS_TREE = "//tools/pkg/linux-headers:linux_headers"
+
 BINUTILS_TREE = "//tools/pkg/binutils:binutils"
 
 # An action_config names its tool by artifact, and a file inside a
@@ -65,6 +67,7 @@ stage0_cc_toolchain_config(
     driver = ":g++",
     gcc_tree = GCC_TREE,
     gcc_version = GCC_VERSION,
+    linux_headers_tree = LINUX_HEADERS_TREE,
     musl_tree = MUSL_TREE,
     strip = "//tools/pkg/binutils:strip",
 )
@@ -81,6 +84,7 @@ filegroup(
         ":gcc",
         BINUTILS_TREE,
         GCC_TREE,
+        LINUX_HEADERS_TREE,
         MUSL_TREE,
         "//tools/pkg/binutils:ar",
         "//tools/pkg/binutils:ld",
@@ -169,6 +173,7 @@ stage0_clang_toolchain_config(
     clang_version = CLANG_VERSION,
     gcc_tree = GCC_TREE,
     gcc_version = GCC_VERSION,
+    linux_headers_tree = LINUX_HEADERS_TREE,
     lld = "@llvm-project//lld:ld.lld",
     musl_tree = MUSL_TREE,
     strip = "//tools/pkg/binutils:strip",
@@ -186,6 +191,7 @@ exec_files(
         "@llvm-project//lld:ld.lld",
         BINUTILS_TREE,
         GCC_TREE,
+        LINUX_HEADERS_TREE,
         MUSL_TREE,
         "//tools/pkg/binutils:ar",
         "//tools/pkg/binutils:strip",

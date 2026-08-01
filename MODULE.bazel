@@ -340,6 +340,29 @@ http_file(
     downloaded_file_path = "isl-0.24.tar.bz2",
 )
 
+# GNU tar. mescc-tools-extra's untar is a few hundred lines and carried the
+# bootstrap all the way here, but it segfaults on the kernel tarball -- 1.5 GB
+# and some eighty thousand files is past what it was written for. This is the
+# first archive in the chain that needs a real tar.
+http_file(
+    name = "gnutar-src",
+    sha256 = "4d62ff37342ec7aed748535323930c7cf94acf71c3591882b26a7ea50f3edc16",
+    url = "https://mirror.team-cymru.com/gnu/tar/tar-1.35.tar.xz",
+    downloaded_file_path = "tar-1.35.tar.xz",
+)
+
+# The Linux kernel, for its userspace API headers alone -- linux/futex.h and
+# the several hundred beside it. musl is a complete C library and does not
+# ship the kernel's own interface; on a distribution that arrives as a
+# linux-headers package. Nothing is compiled from this but scripts/unifdef.
+# 6.5.6 is the version nixpkgs' minimal-bootstrap uses.
+http_file(
+    name = "linux-src",
+    sha256 = "78e36d4214547051c24df2140f4ce09428d6c515ad9a71b38b28e8094a95d2f6",
+    url = "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.5.6.tar.xz",
+    downloaded_file_path = "linux-6.5.6.tar.xz",
+)
+
 # GNU binutils. The assembler and linker GCC needs; tinycc has its own of
 # both, but GCC will not use them.
 http_file(

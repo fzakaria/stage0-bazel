@@ -1,0 +1,37 @@
+"""Abseil and GoogleTest, built by a compiler that came out of a 357-byte seed.
+
+Nothing in this file is specific to stage0-bazel. It is what anyone would
+write to depend on Abseil, and that is the point.
+"""
+
+cc_library(
+    name = "wordcount",
+    srcs = ["wordcount.cc"],
+    hdrs = ["wordcount.h"],
+    deps = [
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+    ],
+)
+
+cc_binary(
+    name = "wordcount_main",
+    srcs = ["main.cc"],
+    deps = [
+        ":wordcount",
+        "@abseil-cpp//absl/strings",
+    ],
+)
+
+cc_test(
+    name = "wordcount_test",
+    srcs = ["wordcount_test.cc"],
+    deps = [
+        ":wordcount",
+        "@abseil-cpp//absl/status",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
+    ],
+)

@@ -51,6 +51,25 @@ _DECOMPRESSOR_KINDS = [
     DECOMPRESS_GNU,
 ]
 
+# Which program unpacks the .tar once it is decompressed.
+#
+# mescc-tools-extra's untar is what every package in the chain uses, and it is
+# a few hundred lines. The Linux kernel is the first archive past what it was
+# written for -- 1.5 GB across some eighty thousand files -- and it answers
+# that with a segfault:
+#
+#     untar abnormal termination, signal number = 11
+#
+# By that point in the chain GCC 10 exists and a real tar can be built, so the
+# answer is to build one rather than to find out which limit was hit.
+UNTAR_SEED = "seed"
+UNTAR_GNU = "gnu"
+
+_UNTAR_KINDS = [
+    UNTAR_SEED,
+    UNTAR_GNU,
+]
+
 # Which C library's headers a package is compiled against.
 #
 # Everything up to now borrows mes-libc's, because it has no other. A C
@@ -73,12 +92,40 @@ LIBC_HEADERS_TOOLCHAIN = "toolchain"
 # needs are not made available.
 LIBC_HEADERS_NONE = "none"
 
+# Whether a package has a configure script to run.
+#
+# Nearly everything from bash onward is an autoconf package, which is the
+# whole reason this driver exists. The Linux kernel headers are not: the
+# kernel has no ./configure, and `make headers` is the entire build.
+CONFIGURE_AUTOCONF = "autoconf"
+
+CONFIGURE_NONE = "none"
+
+_CONFIGURE_KINDS = [
+    CONFIGURE_AUTOCONF,
+    CONFIGURE_NONE,
+]
+
 _LIBC_HEADERS = [
     LIBC_HEADERS_MES,
     LIBC_HEADERS_OWN,
     LIBC_HEADERS_TOOLCHAIN,
     LIBC_HEADERS_NONE,
 ]
+
+def _untar_command(archive, untar):
+    """Returns the kaem line that unpacks `archive`.
+
+    Args:
+        archive: The .tar to unpack, relative to the execroot.
+        untar: One of _UNTAR_KINDS.
+
+    Returns:
+        A single command line.
+    """
+    if untar == UNTAR_GNU:
+        return "tar -xf %s" % archive
+    return "untar --file %s" % archive
 
 def _patch_variable(index):
     """Returns the script variable naming the index'th patch.
@@ -91,11 +138,13 @@ def _patch_variable(index):
     """
     return "patch%d" % index
 
-def _driver_lines(prefix, configure_flags, make_flags, build_targets, build_attempts, install_target, install_commands, post_install_commands, cc, cc_flags, exports, extra_setup, libc_headers, make_concurrency):
+def _driver_lines(prefix, configure, configure_flags, make_flags, build_targets, build_attempts, install_target, install_commands, post_install_commands, cc, cc_flags, exports, extra_setup, libc_headers, make_concurrency):
     """Returns the bash driver that configures, builds and installs a package.
 
     Args:
         prefix: The directory the tarball unpacks into.
+        configure: CONFIGURE_AUTOCONF to run ./configure, CONFIGURE_NONE for
+            a package that has none.
         configure_flags: Flags appended to ./configure.
         make_flags: Flags passed to the build and install runs of make.
         build_targets: One string of make targets per build run, so that a
@@ -301,12 +350,16 @@ def _driver_lines(prefix, configure_flags, make_flags, build_targets, build_atte
     if extra_setup:
         lines += extra_setup + [""]
 
+    if configure == CONFIGURE_AUTOCONF:
+        lines += [
+            "# Configure. Naming the shell rather than running ./configure",
+            "# directly does two jobs: untar does not preserve the executable",
+            "# bit, and the script's own #!/bin/sh is never consulted.",
+            " ".join(["\"$bash_path\"", "./configure", "--prefix=\"$out\""] + configure_flags),
+            "",
+        ]
+
     lines += [
-        "# Configure. Naming the shell rather than running ./configure",
-        "# directly does two jobs: untar does not preserve the executable bit,",
-        "# and the script's own #!/bin/sh is never consulted.",
-        " ".join(["\"$bash_path\"", "./configure", "--prefix=\"$out\""] + configure_flags),
-        "",
         "# Build. SHELL is passed explicitly because make ignores it from the",
         "# environment by design.",
     ]
@@ -357,6 +410,7 @@ def configure_package(
         name,
         tarball,
         prefix,
+        configure = CONFIGURE_AUTOCONF,
         configure_flags = [],
         make_flags = [],
         build_targets = [],
@@ -379,6 +433,7 @@ def configure_package(
         srcs = [],
         compression = "gz",
         decompressor = DECOMPRESS_SEED,
+        untar = UNTAR_SEED,
         tcc = "//tools/tcc/current:tcc",
         tcc_libs = "//tools/tcc/current:tcc_libs",
         tcc_include = "//tools/tcc/current:src_include_dir",
@@ -396,6 +451,8 @@ def configure_package(
         name: Target name; the output directory is what `make install` wrote.
         tarball: The source archive.
         prefix: The directory the archive unpacks into.
+        configure: CONFIGURE_AUTOCONF to run ./configure, CONFIGURE_NONE for
+            a package that has none and is driven by make alone.
         configure_flags: Flags appended to ./configure.
         make_flags: Flags passed to make, for both the build and the install.
         build_targets: One string of make targets per build run, so that a
@@ -447,6 +504,9 @@ def configure_package(
         decompressor: DECOMPRESS_SEED for mescc-tools-extra's inflate, or
             DECOMPRESS_GNU for the gzip this repository built. The seed's
             cannot read every stream a modern gzip writes.
+        untar: UNTAR_SEED for mescc-tools-extra's untar, or UNTAR_GNU for the
+            GNU tar this repository built. The seed's segfaults on an archive
+            as large as the kernel's.
         tcc: The tinycc to build with.
         tcc_libs: That compiler's library directory.
         tcc_include: That compiler's own include directory.
@@ -457,8 +517,13 @@ def configure_package(
     """
     if compression not in _DECOMPRESSORS:
         fail("unknown compression %s" % compression)
+    if untar not in _UNTAR_KINDS:
+        fail("%s: untar must be one of %s, got %s" % (name, _UNTAR_KINDS, untar))
     if decompressor not in _DECOMPRESSOR_KINDS:
         fail("decompressor must be one of %s, got %s" % (_DECOMPRESSOR_KINDS, decompressor))
+    if configure not in _CONFIGURE_KINDS:
+        fail("%s: configure must be one of %s, got %s" %
+             (name, _CONFIGURE_KINDS, configure))
     if libc_headers not in _LIBC_HEADERS:
         fail("libc_headers must be one of %s, got %s" % (_LIBC_HEADERS, libc_headers))
     if libc_headers == LIBC_HEADERS_NONE and not cc:
@@ -477,6 +542,7 @@ def configure_package(
         out = name + "_build.sh",
         content = _driver_lines(
             prefix,
+            configure,
             configure_flags,
             make_flags,
             build_targets,
@@ -505,14 +571,14 @@ def configure_package(
             "# seed's minimal inflate.",
             "cp ${tarball} source.tar.gz",
             "gzip -d source.tar.gz",
-            "untar --file source.tar",
+            _untar_command("source.tar", untar),
             "",
         ]
     else:
         lines = [
             "# Unpack.",
             "%s --file ${tarball} --output source.tar" % _DECOMPRESSORS[compression],
-            "untar --file source.tar",
+            _untar_command("source.tar", untar),
             "",
         ]
 
@@ -536,7 +602,7 @@ def configure_package(
             else:
                 lines.append("%s --file ${%s} --output %s.tar" %
                              (_DECOMPRESSORS[compression_kind], archive, archive))
-            lines.append("untar --file %s.tar" % archive)
+            lines.append(_untar_command("%s.tar" % archive, untar))
         lines.append("")
 
     # Each patch is named through a script variable rather than by path,
@@ -639,7 +705,9 @@ def configure_package(
             name + "_tcc",
         ]) + tools + ([
             "//tools/pkg/gzip:bin",
-        ] if needs_gnu_gzip else []) + [
+        ] if needs_gnu_gzip else []) + ([
+            "//tools/pkg/gnutar:bin",
+        ] if untar == UNTAR_GNU else []) + [
             "//tools/pkg/coreutils:bin",
             "//tools/pkg/bash:bin",
             "//tools/pkg/gnugrep:bin",

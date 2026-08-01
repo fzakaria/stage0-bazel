@@ -1,0 +1,25 @@
+"""A module that builds a substantial third-party C++ library with the
+bootstrapped toolchain.
+
+examples/consumer proves the toolchain compiles code written for it. This
+proves it compiles code written for somebody else: Abseil and GoogleTest are
+ordinary, demanding C++17 -- heavy templates, RTTI, exceptions, atomics,
+threads, and a pile of platform detection that has never heard of this
+bootstrap. Neither knows anything about stage0-bazel, and nothing here
+patches them.
+"""
+
+module(name = "stage0-absl-example", version = "0.0.1")
+
+bazel_dep(name = "stage0-bazel", version = "0.1.0")
+
+local_path_override(
+    module_name = "stage0-bazel",
+    path = "../..",
+)
+
+bazel_dep(name = "abseil-cpp", version = "20260107.1")
+bazel_dep(name = "googletest", version = "1.17.0.bcr.2")
+
+
+register_toolchains("@stage0-bazel//toolchain:cc")

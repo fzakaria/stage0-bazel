@@ -5,9 +5,12 @@ under [Bazel](https://bazel.build/), the way Nix and Guix do it, with the
 bootstrap expressed as a build graph rather than as shell scripts.
 
 The chain starts from a single 357-byte hand-auditable binary — the hex0 seed —
-and builds everything above it. No compiler, assembler, linker or shell from
-the host participates, and that claim is checked rather than asserted; see
+and builds everything above it. No compiler, assembler or linker from the host
+participates, and that claim is checked rather than asserted; see
 [Verifying no host toolchain is used](#verifying-no-host-toolchain-is-used).
+The bootstrap borrows nothing at all. Building clang on top of it borrows one
+program, a shell for LLVM's genrules, because Bazel will not take a build
+artifact for that — the audit names it rather than passing over it.
 
 ## Where the chain currently reaches
 
@@ -29,6 +32,8 @@ the host participates, and that claim is checked rather than asserted; see
 | musl a fourth time, compiled by GCC 10 | ✅ |
 | A registered `cc_toolchain` | ✅ `cc_binary`, `cc_library` and `cc_test` work |
 | clang 22.1.8 and lld, built by GCC 10 | ✅ a second `cc_toolchain` |
+| GNU tar 1.35 and the Linux 6.5.6 UAPI headers | ✅ |
+| Abseil and GoogleTest, unpatched from the registry | ✅ `examples/absl` |
 
 The chain ends in a C++ compiler, and ordinary Bazel rules use it:
 
@@ -198,6 +203,29 @@ Test targets are exempt. Bazel's own test runner is a bash script, and the
 audits themselves live in test targets; the exemption is confined to test
 actions and does not extend to anything producing a build artifact.
 
+`//:trust-report-llvm` holds the clang graph to the same standard, and its
+report is two entries long:
+
+```
+external/+_repo_rules+hex0-seeds/POSIX/x86/hex0-seed
+
+and, for genrules only, the host shell.
+...
+/nix/store/…/bin/bash
+```
+
+The shell is there because Bazel takes a genrule's shell as an absolute
+system path — `sh_toolchain`'s `path` is a string, and the shell is not a
+declared input of the action, so no file this repository built can serve.
+Nothing else is borrowed: every genrule on the path to clang either uses bash
+builtins or takes its tools from the bootstrap through its `tools` attribute.
+The audit enforces that narrowly, allowing only an action Bazel labelled
+`Genrule` to run only a program named like a shell.
+
+It is a separate target from `//:trust-report` for cost rather than
+principle: an audit's roots are real dependencies, so folding the two would
+make every `bazel test //...` fetch a 250 MB archive and build a compiler.
+
 ## Using this as a Bazel module
 
 Depend on the module and register its toolchain. A registration made in one
@@ -228,6 +256,20 @@ Building your first target builds the whole bootstrap -- the seed through to
 GCC 10 -- which takes on the order of fifteen minutes on a sixteen-core
 machine and is cached afterwards. The long builds run `make -j`; see
 MAKE_JOBS in `tools/stage0/kaem.bzl` if that number needs changing.
+
+`examples/absl` is the same idea against somebody else's code: it depends on
+Abseil and GoogleTest straight from the Bazel Central Registry, unpatched, and
+builds them with the bootstrapped toolchain. `absl::flat_hash_map`,
+`StrSplit`, `StatusOr`, and a test framework that finds its tests through
+static initialisers — which is worth checking actually *runs* them, because a
+toolchain that gets that subtly wrong links, reports success and executes
+nothing.
+
+It found the one real gap: `absl/synchronization` includes `<linux/futex.h>`,
+and musl is a complete C library but not a complete set of headers. The kernel
+owns its own userspace interface. That is what `//tools/pkg/linux-headers` is
+for, and building it is what made `//tools/pkg/gnutar` necessary — the seed's
+`untar` segfaults on 1.5 GB across eighty thousand files.
 
 `examples/consumer` is exactly the above as a runnable module — its own
 `MODULE.bazel`, a `cc_library`, a `cc_binary` and a `cc_test` — and it is
@@ -295,9 +337,14 @@ compiler more people would reach for.
    `--incompatible_enable_cc_toolchain_resolution`, which is the default in
    recent Bazel but is set explicitly here, and `--test_env=PATH` so that
    Bazel's own test runner can find a shell.
-4. **More of the utility set**: gnutar, bison, flex. Nothing in the chain
-   needs them today -- GCC's tar and flex rules are worked around rather than
-   satisfied -- but a package added later probably will.
+4. **More of the utility set**: bison and flex. Nothing in the chain needs
+   them today -- GCC's flex rules are worked around rather than satisfied --
+   but a package added later probably will.
+5. **`installed_program` fails quietly.** Naming a file the package did not
+   install produces a megabyte of padding rather than an error, because that
+   is what `catm` does with a missing input. `uname` sat on every package's
+   `PATH` that way until the kernel's Makefile called it. The extraction
+   should refuse.
 
 ## References
 

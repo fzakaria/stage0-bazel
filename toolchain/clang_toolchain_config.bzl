@@ -102,6 +102,8 @@ def _impl(ctx):
     c_include_directories = [
         resource_include,
         "%s/include" % musl_tree.path,
+        # The kernel's own interface; see //tools/pkg/linux-headers.
+        "%s/include" % ctx.file.linux_headers_tree.path,
     ]
 
     include_directories = cxx_include_directories + c_include_directories
@@ -311,6 +313,13 @@ stage0_clang_toolchain_config = rule(
             mandatory = True,
             cfg = "exec",
             doc = "The installed musl tree the compiler links against.",
+        ),
+        "linux_headers_tree": attr.label(
+            allow_single_file = True,
+            mandatory = True,
+            cfg = "exec",
+            doc = "The kernel's userspace API headers, which musl does not" +
+                  " ship and which anything touching the kernel needs.",
         ),
         "binutils_tree": attr.label(
             allow_single_file = True,

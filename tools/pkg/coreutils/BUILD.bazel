@@ -187,7 +187,12 @@ PROGRAMS = [
     "tr",
     "true",
     "false",
-    "uname",
+    # uname is deliberately absent. coreutils 5.0 against mes-libc does not
+    # build it -- `make install` writes sixty-one programs and that is not one
+    # of them -- and naming it here produced a megabyte of zeroes rather than
+    # an error, because catm answers a missing input by writing nothing and
+    # padding. The Linux kernel's Makefile is the first thing to call it, and
+    # it tolerates the absence; see //tools/pkg/linux-headers.
     "test",
     "touch",
     "uniq",

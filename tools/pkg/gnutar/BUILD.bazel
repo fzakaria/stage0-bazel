@@ -1,0 +1,90 @@
+"""GNU tar 1.35.
+
+mescc-tools-extra's untar is what unpacks every archive up to this point, and
+it is a few hundred lines: no compression, no long-name extensions beyond the
+basics, and a fixed idea of how large an archive can get. That was enough for
+every tarball in the chain until the Linux kernel, which is 1.5 GB unpacked
+across some eighty thousand files, and which makes it stop with
+
+    untar abnormal termination, signal number = 11
+
+Signal 11 is a segfault. Rather than find out which limit it hit, this is the
+point to build the real thing.
+
+1.35 rather than the 1.12 nixpkgs' minimal-bootstrap uses: theirs is built by
+tinycc, and at that point in the chain an ancient tar is the only one that
+will compile. GCC 10 exists by now, so there is no reason to ship a tar from
+1997 to read archives written in 2023.
+"""
+
+load("//tools/pkg:configure.bzl", "LIBC_HEADERS_NONE", "configure_package")
+load("//tools/pkg:defs.bzl", "installed_program")
+load("//tools/stage0:files.bzl", "tool_dir")
+load("//tools/verify:run_test.bzl", "program_output_test")
+
+package(
+    default_visibility = ["//visibility:public"],
+)
+
+configure_package(
+    name = "gnutar_dist",
+    tarball = "@gnutar-src//file",
+    prefix = "tar-1.35",
+    compression = "xz",
+    libc_headers = LIBC_HEADERS_NONE,
+    cc = "$root/$gcc/bin/gcc",
+    cc_flags = [
+        "-static",
+        "-B$root/$musl/lib",
+    ],
+    extra_directories = {
+        "gcc": "//tools/pkg/gcc/latest:gcc_latest_dist",
+        "musl": "//tools/pkg/musl:musl4",
+    },
+    exports = [
+        "AR=ar",
+        "RANLIB=ranlib",
+        "CFLAGS=-O2",
+        "C_INCLUDE_PATH=\"$root/$musl/include\"",
+        "LIBRARY_PATH=\"$root/$musl/lib\"",
+    ],
+    configure_flags = [
+        "--build=x86_64-unknown-linux-gnu",
+        "--host=x86_64-unknown-linux-gnu",
+        "--disable-dependency-tracking",
+        "--disable-nls",
+    ],
+    make_flags = ["MAKEINFO=true"],
+    tools = [
+        "//tools/pkg/binutils:bin",
+        "//tools/pkg/bash/latest:bin",
+        "//tools/pkg/gnused/latest:bin",
+        "//tools/pkg/gawk/latest:bin",
+        "//tools/pkg/diffutils:bin",
+        "//tools/pkg/findutils:bin",
+    ],
+)
+
+installed_program(
+    name = "tar",
+    package = ":gnutar_dist",
+    program = "tar",
+)
+
+tool_dir(
+    name = "bin",
+    tools = {"tar": ":tar"},
+)
+
+program_output_test(
+    name = "gnutar_version_test",
+    program = ":tar",
+    arguments = ["--version"],
+    expected_output = """tar (GNU tar) 1.35
+Copyright (C) 2023 Free Software Foundation, Inc.
+License GPLv3+: GNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>.
+This is free software: you are free to change and redistribute it.
+There is NO WARRANTY, to the extent permitted by law.
+
+Written by John Gilmore and Jay Fenlason.""",
+)

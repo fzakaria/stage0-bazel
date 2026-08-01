@@ -92,6 +92,11 @@ def _impl(ctx):
         "%s/include" % gcc_lib,
         "%s/include-fixed" % gcc_lib,
         "%s/include" % musl_tree.path,
+        # The kernel's own interface. musl is a complete C library and not a
+        # complete set of headers: linux/futex.h and the several hundred
+        # beside it belong to the kernel, and on a distribution they arrive as
+        # a separate linux-headers package.
+        "%s/include" % ctx.file.linux_headers_tree.path,
     ]
 
     # What Bazel checks every #include against. It has no notion of a
@@ -318,6 +323,12 @@ stage0_cc_toolchain_config = rule(
             allow_single_file = True,
             mandatory = True,
             doc = "The installed musl tree the compiler links against.",
+        ),
+        "linux_headers_tree": attr.label(
+            allow_single_file = True,
+            mandatory = True,
+            doc = "The kernel's userspace API headers, which musl does not" +
+                  " ship and which anything touching the kernel needs.",
         ),
         "binutils_tree": attr.label(
             allow_single_file = True,
