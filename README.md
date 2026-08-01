@@ -30,9 +30,7 @@ $ readelf -p .comment bazel-bin/toolchain/tests/cxx17
 Those three lines are the ladder: GCC 10.4.0 built clang, clang compiled the
 program, lld linked it, and the GCC came out of the 357-byte seed.
 
-The first build builds the whole chain — the seed through GCC 10, then LLVM —
-which is hours, and is cached afterwards. `--config=remote` runs the LLVM part
-on [BuildBuddy](https://buildbuddy.io/); see `.bazelrc` for why only that part.
+The first build builds the whole chain — the seed through GCC 10, then LLVM.
 
 There are two toolchains, and `--config=clang` picks the second one. GCC 10.4
 is registered as the default because GCC is what builds clang, so clang cannot
