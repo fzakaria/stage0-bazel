@@ -1,18 +1,73 @@
 # Stage0 in Bazel
 
-Bootstrapping a compiler toolchain from [stage0](https://github.com/oriansj/stage0)
+> Please see [my blog post](https://fzakaria.com/2026/07/31/a-c++-toolchain-from-357-bytes-in-bazel) to learn more about this project.
+>
+> I had hand-written the initial bootstrap stages but relied on an LLM
+> to help me write the remainder of the stages. There is a verification
+> step to validate that the code does not in fact rely on external tools.
+
+Bootstrapping a LLVM compiler toolchain from [stage0](https://github.com/oriansj/stage0)
 under [Bazel](https://bazel.build/), the way Nix and Guix do it, with the
 bootstrap expressed as a build graph rather than as shell scripts.
 
-The chain starts from a single 357-byte hand-auditable binary — the hex0 seed —
-and builds everything above it. No compiler, assembler or linker from the host
+The chain starts from **a single 357-byte** hand-auditable binary, the hex0 seed, and builds everything above it. No compiler, assembler or linker from the host
 participates, and that claim is checked rather than asserted; see
 [Verifying no host toolchain is used](#verifying-no-host-toolchain-is-used).
-The bootstrap borrows nothing at all. Building clang on top of it borrows one
-program, a shell for LLVM's genrules, because Bazel will not take a build
-artifact for that — the audit names it rather than passing over it.
 
-## Where the chain currently reaches
+## Building with clang
+
+`--config=clang` builds your target with clang 22.1.8 and lld, both of which
+this repository built:
+
+```console
+$ bazel build --config=clang //toolchain/tests:cxx17
+$ readelf -p .comment bazel-bin/toolchain/tests/cxx17
+  GCC: (GNU) 10.4.0
+  clang version 22.1.8
+  Linker: LLD 22.1.8
+```
+
+Those three lines are the ladder: GCC 10.4.0 built clang, clang compiled the
+program, lld linked it, and the GCC came out of the 357-byte seed.
+
+The first build builds the whole chain — the seed through GCC 10, then LLVM —
+which is hours, and is cached afterwards. `--config=remote` runs the LLVM part
+on [BuildBuddy](https://buildbuddy.io/); see `.bazelrc` for why only that part.
+
+There are two toolchains, and `--config=clang` picks the second one. GCC 10.4
+is registered as the default because GCC is what builds clang, so clang cannot
+be its own default without depending on itself. `--config=clang` switches the
+target platform to `//toolchain:clang_platform`, which carries the constraint
+only the clang toolchain matches. Without it you get GCC, which is a working
+C++17 compiler in its own right.
+
+## Using this as a Bazel module
+
+```starlark
+bazel_dep(name = "stage0-bazel", version = "XXX")
+
+# clang first: resolution takes the first match, and the GCC toolchain
+# matches everything.
+register_toolchains(
+    "@stage0-bazel//toolchain:clang",
+    "@stage0-bazel//toolchain:cc",
+)
+```
+
+A registration in one module does not reach another, so those lines have to be
+in your own `MODULE.bazel`. `cc_binary`, `cc_library` and `cc_test` then work
+as usual; nothing in your BUILD files mentions the bootstrap. Programs come out
+statically linked, because the musl this ships has no shared objects.
+
+`--config=clang` lives in this repository's `.bazelrc`, which a depending
+module does not inherit. Copy the `build:llvm` and `build:clang` blocks out of
+it into your own, or pass the flags directly.
+
+`examples/consumer` is the smallest runnable version of the above.
+`examples/absl` is the same against somebody else's code: Abseil and GoogleTest
+straight from the Bazel Central Registry, unpatched.
+
+## Stages
 
 | Stage | Status |
 | --- | --- |
@@ -53,144 +108,27 @@ largest 11
 caught largest of nothing
 ```
 
-`toolchain/tests/hello.cc` is a plain `cc_binary`. It uses `std::vector`,
-`std::string`, `std::sort`, iostreams, a template and a throw caught by
-reference — the last of those is what proves the whole chain agrees, because
-an exception crossing a function boundary needs the unwind tables the
-compiler emitted, the assembler encoded and the linker merged. The result is
-a static ELF executable with no `PT_INTERP`, and every program that produced
-it descends from the 357-byte hex0 seed.
-
-### What the compiler is
-
-GCC 10.4.0 and musl 1.2.6, built in this order:
-
-1. tinycc, seven stages deep, is the first compiler that can build a libc.
-2. musl, compiled by tinycc twice — the first round because the mes-libc
-   tinycc miscompiles long double arithmetic, so the libc it produces formats
-   floating point wrongly, and the second by the tinycc that first round
-   fixed.
-3. binutils, then GCC 4.6.4 for C. 4.6 is the last release a compiler as
-   limited as tinycc can build, which is why both reference bootstraps go
-   through it.
-4. musl a third time, compiled by GCC. The tinycc rounds are missing what
-   tinycc could not build — the complex math, the hand-written x86-64 string
-   and math routines — and a toolchain that ships a libc has to ship a whole
-   one.
-5. GCC 4.6.4 again with `--enable-languages=c,c++`, built by the C compiler
-   from step 3 against the musl from step 4. tinycc cannot compile C++ at
-   all, so a second GCC pass is how the chain acquires one.
-6. GCC 10.4.0, built by that C++ compiler. GCC has needed a C++ compiler to
-   build itself since 4.8, and 10.4 asks only for C++98 — GCC 11 raises that
-   to C++11, which 4.6 does not have, so 10.4 is as far as this ladder
-   reaches in one step. 10.5 is not usable: it miscompiles under 4.6
-   ([PR 110716](https://gcc.gnu.org/bugzilla/show_bug.cgi?id=110716)).
-7. musl a fourth time, compiled by GCC 10, so the C library a program links
-   against was built by the compiler that compiles it.
-
-Version numbers, patches and configure flags are nixpkgs'
+Version numbers, patches and configure flags mimic nixpkgs'
 [minimal-bootstrap](https://github.com/NixOS/nixpkgs/tree/master/pkgs/os-specific/linux/minimal-bootstrap),
-with one deliberate departure: everything here is linked statically. nixpkgs
-points the compiler at musl's dynamic loader, and there is no shared musl in
-this repository to load.
-
-### What C++ this is
-
-C++17. `toolchain/tests/cxx17.cc` is built through the registered toolchain
-and uses structured bindings, `if constexpr`, a fold expression,
-`std::optional` and `std::string_view` — none of which GCC 4.6 can compile,
-so the test fails to build rather than fails to run if the toolchain is ever
-pointed back at it.
-
-GCC 10 defaults to `gnu++14`, so ask for `-std=c++17` in `copts` when you
-want it.
-
-### clang
-
-The chain does not stop at GCC. `//toolchain:clang` is a second
-`cc_toolchain` driven by clang 22.1.8 and lld 22.1.8, both built by the
-GCC 10 above. The `.comment` section of anything it produces is the whole
-ladder in three lines:
-
-```console
-$ readelf -p .comment bazel-bin/toolchain/tests/cxx17
-  GCC: (GNU) 10.4.0
-  clang version 22.1.8
-  Linker: LLD 22.1.8
-```
-
-LLVM is consumed through `utils/bazel`, which upstream does not publish to
-the registry, so `MODULE.bazel` fetches the source and lets `llvm_configure`
-overlay the BUILD files onto it. Four patches travel with it, each for one
-reason: no Python interpreter, no glibc, a version string that reads
-`22.1.8None` in a release tarball, and a zlib-ng that cannot be included with
-angle brackets. compiler-rt is not built -- `libgcc.a` already has the
-builtins -- and neither is libc++, so the C++ runtime is still libstdc++.
-
-It is not registered by default and cannot be: GCC is what builds clang, so a
-clang toolchain that also applied to the tools being built for the host would
-depend on itself. Ask for it explicitly:
-
-```console
-$ bazel build --config=llvm \
-    --extra_toolchains=//toolchain:clang \
-    --platforms=//toolchain:clang_platform \
-    //toolchain/tests:cxx17
-```
-
-`--config=llvm` carries the flags LLVM's own `.bazelrc` would have supplied,
-and `--config=remote` adds BuildBuddy: LLVM is an ordinary Bazel build of an
-ordinary C++ project and takes well to remote execution, where the bootstrap
-does not and is pinned local. See `tools/stage0/exec.bzl`.
-
-## Building
-
-The repository pins its Bazel release in `.bazelversion`, so use
-[bazelisk](https://github.com/bazelbuild/bazelisk). A `shell.nix` is provided
-that supplies bazelisk and a JDK, and deliberately supplies no C compiler:
-
-```console
-$ nix-shell
-$ bazel test //...
-$ bazel build //:trust-report && cat bazel-bin/tools/verify/no_native_toolchain.report
-```
+with one deliberate departure: everything here is linked statically. nixpkgs points the compiler at musl's dynamic loader, and there is no shared musl in this repository to load.
 
 ## Verifying no host toolchain is used
 
 Two mechanisms: one configured, one checked.
 
 `.bazelrc` sets `BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1`, so Bazel does not
-auto-detect a host C++ toolchain, and `--incompatible_strict_action_env`, so
-actions see a fixed `PATH` rather than the developer's.
-
-`//:attestation` states the whole claim as a build artifact: how many files
-reaching an action were built here, how many came from a hash-pinned archive,
-how many are checked in, and which binaries were taken on trust. Nothing falls
-outside those categories, which is what "hermetic" means here — no input read
-from the host, and no unpinned input. Both audits start from the C++ program,
-so what they cover is the toolchain and everything under it:
-
-```
-2. Every file reaching an action came from one of three places:
-
-     2467 built by this graph
-     847 from a hash-pinned archive
-     36 checked in to this repository
-```
-
-Two of those pinned files are worth naming, because they are shell scripts
-rather than sources: `link_dynamic_library.sh` and `build_interface_so`, which
-Bazel's own `cc_toolchain` rule attaches to every link action. This toolchain
-declares no dynamic linking, so neither is ever run — and the trust report
-below is what establishes that, because it checks the program each action
-executes rather than what it merely has available.
+auto-detect a host C++ toolchain, and `--incompatible_strict_action_env`, so actions see a fixed `PATH` rather than the developer's.
 
 Configuration can be overridden on the command line, so the enforcing check is
 `//:trust-report`. It runs an aspect over every action reachable from the
 bootstrap roots and inspects the program each one actually executes. Anything
-not under `bazel-out/` fails analysis, with one allowlisted exception:
+not under `bazel-out/` fails analysis, so the report is produced only if the
+claim holds. It is analysis-only — it does not build the compiler, and takes a
+second:
 
-```
+```console
+$ bazel build //:trust-report
+$ cat bazel-bin/tools/verify/no_native_toolchain.report
 Bootstrap trust report
 
 Every action in the checked graph runs a program built by this
@@ -203,148 +141,63 @@ Test targets are exempt. Bazel's own test runner is a bash script, and the
 audits themselves live in test targets; the exemption is confined to test
 actions and does not extend to anything producing a build artifact.
 
-`//:trust-report-llvm` holds the clang graph to the same standard, and its
-report is two entries long:
+`//:attestation` states the wider claim: how many files reaching an action were
+built here, how many came from a hash-pinned archive, how many are checked in,
+and which binaries were taken on trust. Nothing falls outside those categories,
+which is what "hermetic" means here — no input read from the host, and no
+unpinned input:
 
-```
-external/+_repo_rules+hex0-seeds/POSIX/x86/hex0-seed
-
-and, for genrules only, the host shell.
+```console
+$ bazel build //:attestation
+$ cat bazel-bin/tools/verify/attestation.txt
+Hermeticity attestation
+=======================
 ...
+2. Every file reaching an action came from one of three places:
+
+     2502 built by this graph
+     853 from a hash-pinned archive
+     35 checked in to this repository
+...
+3. Binaries taken on trust rather than built from source:
+
+     external/+_repo_rules+hex0-seeds/POSIX/x86/hex0-seed
+```
+
+Two of those pinned files are worth naming, because they are shell scripts
+rather than sources: `link_dynamic_library.sh` and `build_interface_so`, which
+Bazel's own `cc_toolchain` rule attaches to every link action. This toolchain
+declares no dynamic linking, so neither is ever run — and the trust report is
+what establishes that, because it checks the program each action executes
+rather than what it merely has available.
+
+`//:trust-report-llvm` holds the clang graph to the same standard. It is a
+separate target for cost rather than principle: an audit's roots are real
+dependencies, so folding the two would make every `bazel test //...` fetch a
+250 MB archive and build a compiler.
+
+```console
+$ bazel build --config=llvm //:trust-report-llvm
+$ cat bazel-bin/tools/verify/no_native_toolchain_llvm.report
+...
+external/+_repo_rules+hex0-seeds/POSIX/x86/hex0-seed
 /nix/store/…/bin/bash
 ```
 
-The shell is there because Bazel takes a genrule's shell as an absolute
-system path — `sh_toolchain`'s `path` is a string, and the shell is not a
-declared input of the action, so no file this repository built can serve.
-Nothing else is borrowed: every genrule on the path to clang either uses bash
-builtins or takes its tools from the bootstrap through its `tools` attribute.
-The audit enforces that narrowly, allowing only an action Bazel labelled
-`Genrule` to run only a program named like a shell.
-
-It is a separate target from `//:trust-report` for cost rather than
-principle: an audit's roots are real dependencies, so folding the two would
-make every `bazel test //...` fetch a 250 MB archive and build a compiler.
-
-## Using this as a Bazel module
-
-Depend on the module and register its toolchain. A registration made in one
-module does not reach another, so this line has to be in your own
-`MODULE.bazel`:
-
-```starlark
-bazel_dep(name = "stage0-bazel", version = "0.1.0")
-
-register_toolchains("@stage0-bazel//toolchain:cc")
-```
-
-That is all. `cc_binary`, `cc_library` and `cc_test` then resolve to the
-bootstrapped GCC, and nothing in your BUILD files mentions the bootstrap:
-
-```starlark
-cc_binary(
-    name = "app",
-    srcs = ["app.cc"],
-)
-```
-
-Two things to know about the result. Programs are statically linked, because
-the musl this ships has no shared objects. And the compiler is GCC 10.4, which
-defaults to `gnu++14`; add `-std=c++17` with `copts` if you want it.
-
-Building your first target builds the whole bootstrap -- the seed through to
-GCC 10 -- which takes on the order of fifteen minutes on a sixteen-core
-machine and is cached afterwards. The long builds run `make -j`; see
-MAKE_JOBS in `tools/stage0/kaem.bzl` if that number needs changing.
-
-`examples/absl` is the same idea against somebody else's code: it depends on
-Abseil and GoogleTest straight from the Bazel Central Registry, unpatched, and
-builds them with the bootstrapped toolchain. `absl::flat_hash_map`,
-`StrSplit`, `StatusOr`, and a test framework that finds its tests through
-static initialisers — which is worth checking actually *runs* them, because a
-toolchain that gets that subtly wrong links, reports success and executes
-nothing.
-
-It found the one real gap: `absl/synchronization` includes `<linux/futex.h>`,
-and musl is a complete C library but not a complete set of headers. The kernel
-owns its own userspace interface. That is what `//tools/pkg/linux-headers` is
-for, and building it is what made `//tools/pkg/gnutar` necessary — the seed's
-`untar` segfaults on 1.5 GB across eighty thousand files.
-
-`examples/consumer` is exactly the above as a runnable module — its own
-`MODULE.bazel`, a `cc_library`, a `cc_binary` and a `cc_test` — and it is
-worth running rather than only reading. It is the only thing that exercises
-the paths and labels this repository hands to a *consumer*, which is where a
-build that has only ever run as the main repository goes wrong; six such
-faults were found by running it.
-
-The lower-level tools are available under stable labels for anything that
-wants them directly: `@stage0-bazel//:hex2`, `//:M1`, `//:blood-elf`,
-`//:M2-Planet`, `//:M2-Mesoplanet`, `//:get_machine`, `//:kaem`, `//:mes`,
-`//:tcc-mes` and `//:tcc`. mescc has rules of its own:
-
-```starlark
-load("@stage0-bazel//tools:defs.bzl", "mescc_binary", "mescc_object")
-
-mescc_object(
-    name = "hello_o",
-    src = "hello.c",
-    toolchain = "@stage0-bazel//:mescc",
-)
-
-mescc_binary(
-    name = "hello",
-    objects = [":hello_o"],
-    toolchain = "@stage0-bazel//:mescc",
-)
-```
+The shell is the second entry because Bazel takes a genrule's shell as an
+absolute system path — `sh_toolchain`'s `path` is a string, and the shell is
+not a declared input of the action, so no file this repository built can serve.
+LLVM has eight genrules; the bootstrap proper has none.
 
 ## How the pieces fit
 
-Each stage0 phase lives in its own package under `tools/stage0/phaseN`, and the
-rules that drive the tools live in `tools/stage0/*.bzl`. From phase 7 onward
-every binary carries a blood-elf symbol footer and is linked against the
-debuggable ELF header, so `objdump` and `gdb` work on the intermediate tools —
-which is exactly when a bootstrap is hardest to debug without them.
+Each stage0 phase lives in its own package under `tools/stage0/phaseN`, and the rules that drive the tools live in `tools/stage0/*.bzl`.
 
-mescc is not a single binary. It is a Scheme program interpreted by mes, it
-parses C with [nyacc](https://www.nongnu.org/nyacc/), and it spawns the stage0
-`M1`, `hex2` and `blood-elf` tools to assemble and link. `tools/stage0/mescc.bzl`
-hides that: the tool locations go through the `M1`, `HEX2` and `BLOOD_ELF`
-environment variables mescc already honours, so `PATH` — and with it the host —
-never enters the picture.
+From phase 7 onward every binary carries a blood-elf symbol footer and is linked against the debuggable ELF header, so `objdump` and `gdb` work on the intermediate tools. The footer is a 16-byte signature, a 32-byte SHA256 of the binary, and a 32-byte SHA256 of the debug info. The signature is `blood-elf`'s, and the hashes are checked by `get_machine` before it runs any tool.
 
-The file formats are stage0's rather than the platform's. A mescc `.o` is a
-hex2 file, and an "archive" is those files concatenated, which is all upstream's
-`mesar` does. The concatenation is performed by `catm` from phase 2, so even
-archiving uses no host tool.
+mescc is not a single binary. It is a Scheme program interpreted by mes, it parses C with [nyacc](https://www.nongnu.org/nyacc/), and it spawns the stage0 `M1`, `hex2` and `blood-elf` tools to assemble and link.
 
-## Roadmap
-
-The chain reaches a C++17 compiler. What is left is mostly about making it a
-compiler more people would reach for.
-
-1. **The toolchain's rough edges.** Neither toolchain declares dynamic
-   linking, `--start-lib`, module maps or separate debug info. None of these
-   is hard, and each is a small, testable change.
-2. **The genrule shell.** It is the one host program either audit still
-   names, and only because Bazel takes a genrule's shell as an absolute
-   system path -- `sh_toolchain`'s `path` is a string, and the shell is not a
-   declared input, so it cannot be a build artifact. Replacing the eight
-   genrules on the path to clang with rules that name the bootstrapped bash
-   would close it.
-3. **A `.bazelrc`-free consumer.** A depending module currently wants
-   `--incompatible_enable_cc_toolchain_resolution`, which is the default in
-   recent Bazel but is set explicitly here, and `--test_env=PATH` so that
-   Bazel's own test runner can find a shell.
-4. **More of the utility set**: bison and flex. Nothing in the chain needs
-   them today -- GCC's flex rules are worked around rather than satisfied --
-   but a package added later probably will.
-5. **`installed_program` fails quietly.** Naming a file the package did not
-   install produces a megabyte of padding rather than an error, because that
-   is what `catm` does with a missing input. `uname` sat on every package's
-   `PATH` that way until the kernel's Makefile called it. The extraction
-   should refuse.
+The file formats are stage0's rather than the platform's. A mescc `.o` is a hex2 file, and an "archive" is those files concatenated, which is all upstream's `mesar` does.
 
 ## References
 

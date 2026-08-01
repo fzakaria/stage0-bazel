@@ -129,3 +129,17 @@ build:llvm --@llvm-project//third-party:llvm_enable_zstd=false
 # names this machine's nix store and a BuildBuddy container does not have it.
 # They only write small files, so nothing is lost.
 build:llvm --modify_execution_info=Genrule=+no-remote
+
+# Building with clang instead of GCC.
+#
+# --config=llvm is about building LLVM; this is about using what it produced.
+# It carries those flags too, because a build that uses clang has to build it
+# first, and adds the platform that selects it: //toolchain:clang is
+# registered but requires a constraint only that platform carries, so an
+# ordinary build still resolves to the GCC that built clang. That indirection
+# is not a preference -- clang cannot be its own default without depending on
+# itself.
+#
+#     bazelisk build --config=clang //your:target
+build:clang --config=llvm
+build:clang --platforms=//toolchain:clang_platform

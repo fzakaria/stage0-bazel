@@ -33,6 +33,17 @@ bazel_dep(name = "zstd", version = "1.5.7", repo_name = "llvm_zstd")
 # The C/C++ toolchain this repository bootstraps. A module depending on
 # stage0-bazel has to register it for itself -- registrations do not
 # propagate across modules. //toolchain says the rest.
+# clang first, and the order is what makes this work. Resolution takes the
+# first registered toolchain that matches, and both of these match
+# //toolchain:clang_platform -- the GCC one carries no constraint beyond the
+# CPU and OS, so it matches everything. Registered second it would win there
+# too, and --platforms would appear to do nothing.
+#
+# It still is not the default. clang requires the clang_backend constraint
+# that only that platform carries, so an ordinary build skips past it to GCC,
+# which is what has to happen: GCC is what builds clang.
+register_toolchains("//toolchain:clang")
+
 register_toolchains("//toolchain:cc")
 
 http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
